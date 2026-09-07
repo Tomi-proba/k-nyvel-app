@@ -78,6 +78,7 @@ export async function updateInvoiceAction(
   revalidatePath("/szamlak");
   revalidatePath(`/szamlak/${invoice.id}`);
   revalidatePath("/dashboard");
+  revalidatePath("/tervezet");
   redirect("/szamlak");
 }
 
@@ -96,4 +97,5 @@ export async function deleteInvoiceAction(formData: FormData) {
 
   revalidatePath("/szamlak");
   revalidatePath("/dashboard");
+  revalidatePath("/tervezet");
 }

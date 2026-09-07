@@ -61,7 +61,7 @@ export async function registerAction(
     return { error: "A regisztráció sikerült, de a bejelentkezés nem. Jelentkezz be manuálisan." };
   }
 
-  redirect("/dashboard");
+  redirect("/szamlak");
 }
 
 export async function loginAction(
@@ -87,7 +87,7 @@ export async function loginAction(
     return { error: "Hibás email cím vagy jelszó." };
   }
 
-  redirect("/dashboard");
+  redirect("/szamlak");
 }
 
 function defaultCategories(companyId: string) {

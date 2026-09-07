@@ -26,7 +26,13 @@ export default async function InvoicesPage({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Számlák</h1>
+      <div>
+        <h1 className="text-xl font-semibold text-slate-900">Számlák</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          A rögzített bizonylatok nyers listája — összesítés és számítás nélkül. Havi bontásért lásd az
+          Összesítők, tervezet kimutatásért a Tervezet kimutatás menüpontot.
+        </p>
+      </div>
       <UploadDropzone />
       <InvoiceFilters filters={filters} categories={categories} />
       <InvoiceList

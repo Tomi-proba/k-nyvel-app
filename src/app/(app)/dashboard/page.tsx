@@ -2,16 +2,12 @@ import Link from "next/link";
 import { requireActiveMembership } from "@/lib/current-company";
 import { db } from "@/lib/db";
 import { summarizeByMonth } from "@/lib/vat";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, HU_MONTHS } from "@/lib/format";
 import { InvoiceList } from "@/components/invoice-list";
 
 function monthLabel(month: string): string {
   const [year, m] = month.split("-");
-  const names = [
-    "január", "február", "március", "április", "május", "június",
-    "július", "augusztus", "szeptember", "október", "november", "december",
-  ];
-  return `${year}. ${names[Number(m) - 1]}`;
+  return `${year}. ${HU_MONTHS[Number(m) - 1]}`;
 }
 
 function monthRange(month: string): { start: Date; end: Date } {
@@ -79,7 +75,7 @@ export default async function DashboardPage({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Áttekintő — {membership.company.name}</h1>
+        <h1 className="text-xl font-semibold text-slate-900">Összesítők — {membership.company.name}</h1>
         {reviewCount > 0 && (
           <Link
             href="/szamlak"

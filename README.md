@@ -118,6 +118,23 @@ npm run test
 5. **Szűrés és export** — dátum/irány/kategória/partner szerinti szűrés,
    Excel (.xlsx) és CSV export könyvelőbarát oszlopszerkezettel (a CSV magyar
    Excel-lokalizációhoz igazítva: pontosvessző-elválasztó, tizedesvessző).
+6. **Tervezet pénzügyi kimutatás** (`/tervezet`) — a jóváhagyott bizonylatok
+   nettó összegeiből számolt tervezet-eredménykimutatás, hónap/negyedév/év
+   szerint szűrve, PDF (átlós "TERVEZET – NEM HIVATALOS" vízjellel) és Excel
+   exporttal. **Nem alapértelmezett nézet** — tudatosan külön menüpont, és
+   minden képernyőn/exportban jól látható, nem eltüntethető jogi
+   figyelmeztetést visel: ez egy becslés, nem hivatalos könyvelés, NAV-beadásra
+   nem alkalmas, könyvelőt nem helyettesít. A mérleg-vázlat egyelőre nincs
+   implementálva — ehhez a jelenlegi adatmodell (nincs eszköz-/kötelezettség-
+   kategória, bankegyenleg, kintlévőség-nyilvántartás) nem elég strukturált;
+   a felület ezt őszintén jelzi, nem imitál hamis adatot.
+
+## Alapértelmezett nézetek és navigáció
+
+A "Számlák" (nyers bizonylatlista, összesítés nélkül) az alapértelmezett
+nézet bejelentkezés után. A "Összesítők" a korábbi havi dashboard. A
+"Tervezet kimutatás" egy tudatosan külön, nem alapértelmezett menüpont —
+lásd fent.
 
 ## Amit az MVP tudatosan nem tartalmaz
 
@@ -129,6 +146,11 @@ A specifikáció szerint ezek később, éles indítás előtt/után kerülnek s
 - Email-továbbítással történő bizonylatbeküldés (jelenleg csak manuális
   feltöltés)
 - Valós OCR szolgáltató bekötése (lásd fent a javasolt opciókat)
+- NAV-beadásra kész bevallási nyomtatvány vagy automatikus főkönyvi
+  könyvelés — a "Tervezet pénzügyi kimutatás" szándékosan és véglegesen
+  csak becslés, sosem fog ilyet generálni (lásd a jogi figyelmeztetést)
+- Mérleg-becslés — a jelenlegi adatmodell nem tárol eszköz-/kötelezettség-
+  kategóriákat, bankegyenleget vagy kintlévőség-nyilvántartást
 
 ## Ismert korlátok
 

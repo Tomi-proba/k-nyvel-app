@@ -44,3 +44,8 @@ export const invoiceDirectionLabels: Record<string, string> = {
   INCOME: "Bevétel",
   EXPENSE: "Kiadás",
 };
+
+export const HU_MONTHS = [
+  "január", "február", "március", "április", "május", "június",
+  "július", "augusztus", "szeptember", "október", "november", "december",
+];

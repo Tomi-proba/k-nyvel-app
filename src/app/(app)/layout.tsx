@@ -5,8 +5,9 @@ import { CompanySwitcher } from "@/components/company-switcher";
 import { signOutAction } from "./actions";
 
 const navItems = [
-  { href: "/dashboard", label: "Áttekintő" },
   { href: "/szamlak", label: "Számlák" },
+  { href: "/dashboard", label: "Összesítők" },
+  { href: "/tervezet", label: "Tervezet kimutatás" },
   { href: "/kategoriak", label: "Kategóriák" },
   { href: "/cegek", label: "Cégek" },
 ];
@@ -24,7 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-6">
-            <Link href="/dashboard" className="text-lg font-bold text-slate-900">
+            <Link href="/szamlak" className="text-lg font-bold text-slate-900">
               Könyvel
             </Link>
             <nav className="hidden gap-1 sm:flex">

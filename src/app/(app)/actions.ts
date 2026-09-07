@@ -26,7 +26,7 @@ export async function switchCompanyAction(formData: FormData) {
     path: "/",
   });
 
-  redirect("/dashboard");
+  redirect("/szamlak");
 }
 
 export type NewCompanyState = { error?: string } | undefined;
@@ -80,7 +80,7 @@ export async function createCompanyAction(
     path: "/",
   });
 
-  redirect("/dashboard");
+  redirect("/szamlak");
 }
 
 export async function signOutAction() {
