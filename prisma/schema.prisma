@@ -1,0 +1,198 @@
+// Könyvel(ő) MVP — adatbázis séma
+//
+// Modell-kapcsolatok röviden:
+// - Egy User (fiók) N Company-hoz tartozhat a Membership join tábla révén (multi-tenant).
+//   Ez teszi lehetővé, hogy egy könyvelőiroda usere több ügyfél-céget lásson,
+//   és hogy egy cégnek több usere (pl. tulajdonos + könyvelő) legyen.
+// - A Membership.role dönti el, hogy az adott user mit tehet az adott cégben.
+// - Minden üzleti adat (Invoice, Category, Partner) a Company-hoz kötött —
+//   soha nem közvetlenül a Userhez —, így egy cég adatai konzisztensek maradnak
+//   akkor is, ha a userek/jogosultságok változnak.
+// - Partner: visszatérő üzleti partnerek (szállító/vevő), adószám alapján
+//   azonosítva. A Partner.defaultCategoryId adja az "ha ez a partner, mindig
+//   ez a kategória" tanulást: amikor a user egy számlán felülbírálja a
+//   kategóriát, a partnerhez mentjük, és legközelebb OCR után automatikusan
+//   azt javasoljuk/állítjuk be.
+// - Invoice: a feltöltött bizonylat + a belőle kinyert (OCR) adatok. A
+//   `status` mező jelzi, hogy a feldolgozás hol tart, az `uncertainFields`
+//   pedig hogy mely mezőket kell a usernek manuálisan ellenőriznie.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth / tenant ----------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships      Membership[]
+  uploadedInvoices Invoice[]    @relation("InvoiceUploadedBy")
+  reviewedInvoices Invoice[]    @relation("InvoiceReviewedBy")
+
+  @@map("users")
+}
+
+enum MembershipRole {
+  OWNER // cégtulajdonos / fő admin
+  ACCOUNTANT // könyvelő(iroda) hozzáférés
+  MEMBER // munkatárs, csak feltöltés/megtekintés
+}
+
+model Membership {
+  id        String         @id @default(cuid())
+  userId    String
+  companyId String
+  role      MembershipRole @default(OWNER)
+  createdAt DateTime       @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@map("memberships")
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  taxNumber String? // magyar adószám, pl. 12345678-1-42
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  invoices    Invoice[]
+  categories  Category[]
+  partners    Partner[]
+
+  @@map("companies")
+}
+
+// ---------- Törzsadatok ----------
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+  BOTH
+}
+
+model Category {
+  id        String       @id @default(cuid())
+  companyId String
+  name      String
+  type      CategoryType @default(BOTH)
+  // Kulcsszavak, amik a kiállító nevében/tétel leírásában egyezés esetén
+  // ezt a kategóriát javasolják (pl. ["iroda", "papír"]).
+  keywords  String[]     @default([])
+  isDefault Boolean      @default(false)
+  createdAt DateTime     @default(now())
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+  partners Partner[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("categories")
+}
+
+model Partner {
+  id                String   @id @default(cuid())
+  companyId         String
+  name              String
+  taxNumber         String?
+  defaultCategoryId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultCategory Category? @relation(fields: [defaultCategoryId], references: [id], onDelete: SetNull)
+  invoices        Invoice[]
+
+  @@unique([companyId, taxNumber])
+  @@index([companyId, name])
+  @@map("partners")
+}
+
+// ---------- Bizonylatok ----------
+
+enum InvoiceDirection {
+  INCOME // bevétel (kimenő számla)
+  EXPENSE // kiadás (bejövő számla/bizonylat)
+}
+
+enum InvoiceStatus {
+  UPLOADED // fájl feltöltve, OCR még nem futott
+  PROCESSING // OCR feldolgozás alatt
+  NEEDS_REVIEW // OCR lefutott, de van bizonytalan/hiányzó mező
+  CONFIRMED // user jóváhagyta, könyvelésre kész
+  ERROR // OCR feldolgozási hiba
+}
+
+model Invoice {
+  id        String   @id @default(cuid())
+  companyId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // --- Fájl ---
+  fileName String
+  fileUrl  String // storage kulcs/elérési út (local fs vagy S3/R2)
+  mimeType String
+  fileSize Int
+
+  uploadedById String
+  uploadedBy   User   @relation("InvoiceUploadedBy", fields: [uploadedById], references: [id])
+
+  // --- Feldolgozás állapota ---
+  status          InvoiceStatus @default(UPLOADED)
+  // Mely mezőket kell a usernek ellenőriznie (pl. ["grossAmount", "issueDate"])
+  uncertainFields String[]      @default([])
+  // Nyers OCR válasz (audit / debug célra), szolgáltató-független JSON
+  ocrRaw          Json?
+  ocrConfidence   Float?
+
+  reviewedById String?
+  reviewedBy   User?     @relation("InvoiceReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+
+  // --- Kinyert / megerősített adatok ---
+  direction        InvoiceDirection @default(EXPENSE)
+  partnerNameRaw   String? // OCR-ből nyert kiállító név, mielőtt Partnerhez kötnénk
+  partnerTaxNumber String?
+  partnerId        String?
+  partner          Partner?         @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  issueDate DateTime?
+  dueDate   DateTime?
+
+  netAmount   Decimal? @db.Decimal(14, 2)
+  vatAmount   Decimal? @db.Decimal(14, 2)
+  grossAmount Decimal? @db.Decimal(14, 2)
+  vatRate     Decimal? @db.Decimal(5, 2) // pl. 27.00
+  currency    String   @default("HUF")
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  notes String?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, issueDate])
+  @@index([companyId, status])
+  @@index([partnerId])
+  @@map("invoices")
+}
