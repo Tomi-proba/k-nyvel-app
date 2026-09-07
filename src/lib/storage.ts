@@ -136,7 +136,9 @@ export function getStorageDriver(): StorageDriver {
   if (driverName === "s3") {
     cachedDriver = new S3StorageDriver();
   } else {
-    const baseDir = path.resolve(process.env.LOCAL_STORAGE_DIR || "./storage");
+    // A feltöltött fájlok tárolási könyvtára futásidőben dől el (env), nem
+    // projektfájl — nem kell a build tracing-nek statikusan bejárnia.
+    const baseDir = path.resolve(/* turbopackIgnore: true */ process.env.LOCAL_STORAGE_DIR || "./storage");
     cachedDriver = new LocalStorageDriver(baseDir);
   }
   return cachedDriver;

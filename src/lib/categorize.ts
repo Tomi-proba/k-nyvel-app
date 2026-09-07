@@ -1,12 +1,38 @@
 import { db } from "@/lib/db";
 
 /**
+ * Tiszta függvény (nincs IO), így unit tesztelhető: a partner nevében a
+ * leghosszabb (legspecifikusabb) egyező kulcsszót választja, hogy pl.
+ * "Könyvelő Iroda Bt." a "könyvelő" (Könyvelés kategória) kulcsszóra
+ * illeszkedjen, ne a rövidebb, véletlenül szintén egyező "iroda"-ra.
+ */
+export function matchCategoryByKeyword(
+  partnerName: string,
+  categories: { id: string; keywords: string[] }[]
+): string | undefined {
+  const nameLower = partnerName.toLowerCase();
+
+  let bestCategoryId: string | undefined;
+  let bestKeywordLength = 0;
+  for (const category of categories) {
+    for (const keyword of category.keywords) {
+      const kw = keyword.toLowerCase();
+      if (kw.length > bestKeywordLength && nameLower.includes(kw)) {
+        bestKeywordLength = kw.length;
+        bestCategoryId = category.id;
+      }
+    }
+  }
+  return bestCategoryId;
+}
+
+/**
  * Egyszerű, nem ML alapú kategorizálás:
  *  1. Ha a partner (adószám alapján) már ismert és van hozzárendelt
  *     alapértelmezett kategóriája, azt javasoljuk ("ha ez a partner, mindig
  *     ez a kategória").
  *  2. Egyébként a kiállító nevében kulcsszó-egyezést keresünk a cég
- *     kategóriáinak `keywords` listája alapján.
+ *     kategóriáinak `keywords` listája alapján (lásd `matchCategoryByKeyword`).
  *  3. Ha egyik sem talál, nincs javaslat — a user választ kézzel.
  */
 export async function suggestCategoryId(
@@ -23,23 +49,7 @@ export async function suggestCategoryId(
 
   if (partnerNameRaw) {
     const categories = await db.category.findMany({ where: { companyId } });
-    const nameLower = partnerNameRaw.toLowerCase();
-
-    // A leghosszabb (legspecifikusabb) egyező kulcsszót választjuk, hogy pl.
-    // "Könyvelő Iroda Bt." a "könyvelő" (Könyvelés kategória) kulcsszóra
-    // illeszkedjen, ne a rövidebb, véletlenül szintén egyező "iroda"-ra.
-    let bestCategoryId: string | undefined;
-    let bestKeywordLength = 0;
-    for (const category of categories) {
-      for (const keyword of category.keywords) {
-        const kw = keyword.toLowerCase();
-        if (kw.length > bestKeywordLength && nameLower.includes(kw)) {
-          bestKeywordLength = kw.length;
-          bestCategoryId = category.id;
-        }
-      }
-    }
-    if (bestCategoryId) return bestCategoryId;
+    return matchCategoryByKeyword(partnerNameRaw, categories);
   }
 
   return undefined;
