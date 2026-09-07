@@ -17,6 +17,44 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Add meg a jelszavad."),
 });
 
+const optionalString = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v ? v : undefined));
+
+const optionalDecimal = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v ? v : undefined))
+  .refine((v) => v === undefined || !Number.isNaN(Number(v.replace(",", "."))), {
+    message: "Érvénytelen szám.",
+  });
+
+const optionalDate = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v ? v : undefined))
+  .refine((v) => v === undefined || !Number.isNaN(Date.parse(v)), {
+    message: "Érvénytelen dátum.",
+  });
+
+export const invoiceUpdateSchema = z.object({
+  direction: z.enum(["INCOME", "EXPENSE"]),
+  partnerNameRaw: optionalString,
+  partnerTaxNumber: optionalString,
+  issueDate: optionalDate,
+  dueDate: optionalDate,
+  netAmount: optionalDecimal,
+  vatAmount: optionalDecimal,
+  grossAmount: optionalDecimal,
+  vatRate: optionalDecimal,
+  categoryId: optionalString,
+  notes: optionalString,
+});
+
 export const newCompanySchema = z.object({
   name: z.string().trim().min(1, "Add meg a cég nevét."),
   taxNumber: z
