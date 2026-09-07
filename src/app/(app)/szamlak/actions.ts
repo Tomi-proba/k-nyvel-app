@@ -6,6 +6,7 @@ import { requireActiveMembership } from "@/lib/current-company";
 import { db } from "@/lib/db";
 import { getStorageDriver } from "@/lib/storage";
 import { invoiceUpdateSchema } from "@/lib/validation";
+import { findOrCreatePartner, rememberPartnerCategory } from "@/lib/categorize";
 
 export type UpdateInvoiceState = { error?: string } | undefined;
 
@@ -44,12 +45,21 @@ export async function updateInvoiceAction(
   const d = parsed.data;
   const toDecimal = (v: string | undefined) => (v ? v.replace(",", ".") : null);
 
+  // Ha van partner (adószám/név), rögzítjük/frissítjük a törzsadatot, és ha
+  // a user itt kategóriát választott, azt megjegyezzük a partneren — legközelebb
+  // ugyanettől a partnertől automatikusan ezt a kategóriát javasoljuk.
+  const partnerId = await findOrCreatePartner(membership.companyId, d.partnerNameRaw, d.partnerTaxNumber);
+  if (d.categoryId) {
+    await rememberPartnerCategory(membership.companyId, partnerId, d.categoryId);
+  }
+
   await db.invoice.update({
     where: { id: invoice.id },
     data: {
       direction: d.direction,
       partnerNameRaw: d.partnerNameRaw ?? null,
       partnerTaxNumber: d.partnerTaxNumber ?? null,
+      partnerId: partnerId ?? null,
       issueDate: d.issueDate ? new Date(d.issueDate) : null,
       dueDate: d.dueDate ? new Date(d.dueDate) : null,
       netAmount: toDecimal(d.netAmount),

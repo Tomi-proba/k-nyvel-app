@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getActiveMembership } from "@/lib/current-company";
 import { db } from "@/lib/db";
 import { buildStorageKey, getStorageDriver } from "@/lib/storage";
+import { processInvoiceOcr } from "@/lib/process-invoice";
 
 const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
@@ -53,6 +54,12 @@ export async function POST(request: Request) {
       },
     });
     created.push({ id: invoice.id, fileName: invoice.fileName });
+
+    try {
+      await processInvoiceOcr(invoice.id);
+    } catch {
+      errors.push(`${file.name}: az OCR feldolgozás sikertelen, kézzel add meg az adatokat.`);
+    }
   }
 
   if (created.length === 0) {
