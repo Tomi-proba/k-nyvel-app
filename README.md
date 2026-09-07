@@ -5,6 +5,21 @@ rendszerezését és könyvelésre való előkészítését. Cél: egy KKV-tulaj
 vagy könyvelőiroda gyorsan lássa, mi történt egy hónapban, kézi Excel-be
 másolás nélkül.
 
+## Gyors demó — GitHub Codespaces
+
+Nincs szükség helyi telepítésre: a repóban lévő `.devcontainer` konfiguráció
+egy kattintással elindítja az egész appot (Postgres, migráció, seed adatok,
+dev szerver) egy felhős Codespace-ben.
+
+1. Nyisd meg a repót GitHubon, válaszd ki a `claude/kkv-invoice-automation-mvp-obcgmx` branch-et
+2. **Code → Codespaces → Create codespace on branch**
+3. Várd meg, amíg lefut az automatikus setup (kb. 2-3 perc) — ekkor jön létre
+   az adatbázis, fut le a migráció és a seed
+4. Amint a dev szerver elindul, a Codespace felajánl egy előnézeti linket a
+   3000-es porthoz ("Open in Browser") — ez a publikus demó URL, bárkivel
+   megosztható, amíg a Codespace fut
+5. Bejelentkezés a seed adatokkal (lásd lejjebb: `kovacs@example.com` / `jelszo1234`)
+
 ## Tech stack
 
 - **Next.js 16 (App Router) + TypeScript** — frontend és backend egyben
