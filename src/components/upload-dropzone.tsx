@@ -55,7 +55,7 @@ export function UploadDropzone() {
     }
   }
 
-  function handleDrop(e: DragEvent<HTMLDivElement>) {
+  function handleDrop(e: DragEvent<HTMLLabelElement>) {
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files?.length) {
@@ -91,14 +91,14 @@ export function UploadDropzone() {
         </div>
       </div>
 
-      <div
+      <label
+        htmlFor="invoice-file-input"
         onDragOver={(e) => {
           e.preventDefault();
           setIsDragging(true);
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
         className={clsx(
           "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8 text-center transition",
           isDragging ? "border-slate-900 bg-slate-100" : "border-slate-300 bg-white hover:bg-slate-50"
@@ -110,16 +110,16 @@ export function UploadDropzone() {
         <p className="text-xs text-slate-400">PDF, JPG vagy PNG — telefonról fotózva is</p>
         <input
           ref={inputRef}
+          id="invoice-file-input"
           type="file"
           multiple
           accept="application/pdf,image/jpeg,image/png"
-          capture="environment"
-          className="hidden"
+          className="sr-only"
           onChange={(e) => {
             if (e.target.files?.length) void uploadFiles(e.target.files);
           }}
         />
-      </div>
+      </label>
 
       {message && <p className="text-sm text-emerald-600">{message}</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
