@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { calculateGrossFromNet, calculateVatFromNet, roundToTwoDecimals } from "@/lib/vat";
+import { createGoogleDocumentAiProviderFromEnv } from "@/lib/ocr-providers/google-document-ai";
 
 /**
  * OCR / dokumentumfeldolgozó absztrakció.
@@ -9,14 +10,18 @@ import { calculateGrossFromNet, calculateVatFromNet, roundToTwoDecimals } from "
  *    előre tanított modellje jól kezeli az EU-s (így magyar) számlaformátumokat,
  *    és van rá lehetőség egyedi (custom) modellt tanítani konkrét partnerek
  *    visszatérő sablonjaira.
- *  - Google Document AI — Invoice Parser, hasonló képességekkel.
+ *  - Google Document AI — Invoice Parser, hasonló képességekkel. Ez már
+ *    ELŐ VAN KÉSZÍTVE (lásd `ocr-providers/google-document-ai.ts`), de saját
+ *    Google Cloud erőforrás (projekt, processzor, service account) kell
+ *    hozzá — lásd a README-t.
  *  - Rossum vagy Mindee — kifejezetten számla-OCR-re szakosodott SaaS-ok,
  *    gyors integrációval (REST API + webhook).
- * MVP-ben egy mock providert használunk, hogy a teljes pipeline (feltöltés →
- * feldolgozás → ellenőrzésre váró mezők → jóváhagyás) valós adatok nélkül is
- * tesztelhető legyen. A providerek a lenti `OcrProvider` interfészt
- * implementálják, így az éles szolgáltatóra váltás nem igényel változtatást
- * a hívó kódban — csak az `OCR_PROVIDER` env változót kell átállítani.
+ * Alapértelmezetten egy mock providert használunk, hogy a teljes pipeline
+ * (feltöltés → feldolgozás → ellenőrzésre váró mezők → jóváhagyás) valós
+ * adatok/fiók nélkül is tesztelhető legyen. A providerek a lenti
+ * `OcrProvider` interfészt implementálják, így a szolgáltatóváltás nem
+ * igényel változtatást a hívó kódban — csak az `OCR_PROVIDER` env változót
+ * kell átállítani.
  */
 
 export type OcrFieldKey =
@@ -150,12 +155,16 @@ export function getOcrProvider(): OcrProvider {
   if (cachedProvider) return cachedProvider;
 
   const providerName = process.env.OCR_PROVIDER || "mock";
-  if (providerName !== "mock") {
+
+  if (providerName === "mock") {
+    cachedProvider = new MockOcrProvider();
+  } else if (providerName === "google-document-ai") {
+    cachedProvider = createGoogleDocumentAiProviderFromEnv();
+  } else {
     throw new Error(
-      `Az "${providerName}" OCR provider még nincs implementálva. Az MVP-ben csak a "mock" érhető el; ` +
-        "éles integrációhoz implementáld az OcrProvider interfészt (javasolt: Azure AI Document Intelligence)."
+      `Az "${providerName}" OCR provider nem ismert. Támogatott értékek: "mock", "google-document-ai". ` +
+        "Más szolgáltatóhoz (pl. Azure AI Document Intelligence) implementáld az OcrProvider interfészt."
     );
   }
-  cachedProvider = new MockOcrProvider();
   return cachedProvider;
 }

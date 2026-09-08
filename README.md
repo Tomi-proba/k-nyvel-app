@@ -40,17 +40,20 @@ dev szerver) egy felhős Codespace-ben.
   helyi fájlrendszer implementációval (dev) és S3/Cloudflare R2-kompatibilis
   implementációval (éles), `STORAGE_DRIVER` env változóval váltva — a hívó
   kód nem változik.
-- **OCR absztrakció** (`src/lib/ocr.ts`): `OcrProvider` interfész, jelenleg
-  egy determinisztikus mock implementációval. Éles integrációhoz javasolt
-  szolgáltatók (a fájlban részletesebben dokumentálva):
+- **OCR absztrakció** (`src/lib/ocr.ts`): `OcrProvider` interfész.
+  Alapértelmezetten egy determinisztikus mock implementáció fut
+  (`OCR_PROVIDER=mock`). **Google Document AI** (Invoice Parser) integráció
+  már elő van készítve (`src/lib/ocr-providers/google-document-ai.ts`,
+  `OCR_PROVIDER=google-document-ai`) — lásd lejjebb a bekapcsolás lépéseit.
+  Alternatívák, ha inkább más szolgáltatót választanál (a fájlban
+  részletesebben dokumentálva):
   - **Azure AI Document Intelligence** (Invoice modell) — jól kezeli az
     EU-s/magyar számlaformátumokat, egyedi modell is tanítható.
-  - **Google Document AI** (Invoice Parser) — hasonló képességű alternatíva.
   - **Rossum / Mindee** — számla-OCR-re szakosodott SaaS-ok, gyors
     integrációval.
-  A bizonytalan mezőket a mock (és majd az éles provider is) sosem tölti ki
-  kitalált adattal — ezeket a rendszer `uncertainFields`-ként jelöli, a
-  review-űrlap pedig sárga "ellenőrzésre vár" jelöléssel emeli ki.
+  A bizonytalan mezőket a mock és a Google Document AI provider is sosem
+  tölti ki kitalált adattal — ezeket a rendszer `uncertainFields`-ként
+  jelöli, a review-űrlap pedig sárga "ellenőrzésre vár" jelöléssel emeli ki.
 - **Kategorizálás** (`src/lib/categorize.ts`): partner (adószám) alapján
   tanult alapértelmezett kategória, másodsorban kulcsszó-egyezés a kiállító
   nevében. Jóváhagyáskor vagy a Kategóriák oldalon a user felülbírálhatja —
@@ -102,6 +105,53 @@ Nyisd meg: <http://localhost:3000>
 ```bash
 npm run test
 ```
+
+### 6. Valódi OCR bekötése (Google Document AI) — opcionális
+
+Alapértelmezetten `OCR_PROVIDER=mock` fut, valós fiók/kulcs nélkül. Ha
+szeretnéd, hogy a rendszer ténylegesen kiolvassa a feltöltött számlák
+adatait, a Google Document AI provider elő van készítve — ehhez saját
+Google Cloud erőforrás kell:
+
+1. **Google Cloud projekt** — hozz létre egyet (vagy használj meglévőt) a
+   [Google Cloud Console](https://console.cloud.google.com/)-on, és
+   engedélyezd rajta a **Document AI API**-t.
+2. **Processzor létrehozása** — a Document AI konzolban hozz létre egy új
+   **Invoice Parser** (számla-feldolgozó) processzort. Válassz régiót
+   (`eu` vagy `us` — ez lesz a `GOOGLE_DOCUMENT_AI_LOCATION`), és jegyezd
+   fel a processzor azonosítóját (`GOOGLE_DOCUMENT_AI_PROCESSOR_ID`).
+3. **Service account** — hozz létre egy service accountot a projektben, add
+   hozzá a **Document AI API User** (`roles/documentai.apiUser`) szerepkört,
+   majd generálj hozzá egy JSON kulcsot (Keys → Add key → JSON).
+4. **Env változók** beállítása a `.env` fájlban:
+   ```bash
+   OCR_PROVIDER="google-document-ai"
+   GOOGLE_CLOUD_PROJECT_ID="a-te-projekt-azonosítód"
+   GOOGLE_DOCUMENT_AI_LOCATION="eu"
+   GOOGLE_DOCUMENT_AI_PROCESSOR_ID="a-processzor-azonosítója"
+   # a letöltött service account JSON kulcsfájl TELJES tartalma, egy sorban:
+   GOOGLE_APPLICATION_CREDENTIALS_JSON='{"type":"service_account","client_email":"...","private_key":"...",...}'
+   ```
+   (Ha üresen hagyod a `GOOGLE_APPLICATION_CREDENTIALS_JSON`-t, a kliens a
+   szokásos Google Application Default Credentials láncot próbálja használni
+   — pl. helyi `gcloud auth application-default login` után.)
+5. Indítsd újra a szervert (`npm run dev`) — mostantól a feltöltött számlák
+   valódi OCR-en mennek keresztül.
+
+**Fontos korlátok, amiket érdemes tudni:**
+- A `src/lib/ocr-providers/google-document-ai.ts`-ben szereplő entitástípus-
+  nevek (`supplier_name`, `net_amount` stb.) a Google hivatalos Invoice
+  Parser sémája szerintiek, de processzor-verziónként minimálisan
+  eltérhetnek. Az első éles teszt után érdemes egy valós válasz `raw` mezőjét
+  megnézni (minden nyers entitás elmentve marad audit célra), és szükség
+  esetén bővíteni az `ENTITY_TYPE_MAP`-et.
+- Nem volt hozzáférésem éles Google Cloud fiókhoz, ezért ez az integráció
+  mockolt Document AI válaszokkal van tesztelve (`tests/google-document-ai.test.ts`),
+  végponttól-végpontig valós fiókkal nincs kipróbálva.
+- Az ÁFA kulcsot a Document AI nem mindig adja vissza külön mezőként — ha
+  van nettó és ÁFA összeg, abból számolja a provider; ha bármelyik hiányzik
+  vagy alacsony konfidenciájú, `vatRate` bizonytalanként jelölődik (sosem
+  talál ki adatot).
 
 ## Fő funkciók
 
