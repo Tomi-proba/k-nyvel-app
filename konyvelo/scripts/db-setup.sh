@@ -4,7 +4,8 @@
 # Két adatbázis-felhasználót hoz létre:
 #   konyvelo_owner – a séma tulajdonosa, csak a migrációkat futtatja
 #   konyvelo_app   – az alkalmazás ezzel fut; az audit naplót csak bővíteni tudja
-# és két adatbázist: konyvelo (fejlesztés) és konyvelo_test (automata tesztek).
+# és három adatbázist: konyvelo (fejlesztés), konyvelo_test (automata tesztek),
+# konyvelo_e2e (böngészős tesztek).
 #
 # Használat (PostgreSQL superuserként, pl.):  sudo -u postgres bash scripts/db-setup.sh
 # A jelszavak a fejlesztői alapértelmezések; éles környezetben erős jelszót adjon meg:
@@ -27,7 +28,7 @@ END
 \$\$;
 SQL
 
-for db in konyvelo konyvelo_test; do
+for db in konyvelo konyvelo_test konyvelo_e2e; do
   if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname = '${db}'" | grep -q 1; then
     psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE ${db} OWNER konyvelo_owner ENCODING 'UTF8' TEMPLATE template0"
   fi

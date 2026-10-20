@@ -116,7 +116,7 @@ const companyFields = {
   representativeName: optionalTrimmed("Képviselő neve", 200),
   reportType: z.enum(REPORT_TYPES, { error: "Válasszon beszámolóformát." }),
   significantErrorThreshold: z
-    .number()
+    .number({ error: "Érvénytelen összeg. Példa: 1 000 000" })
     .int("A jelentős hiba értékhatára egész fillér legyen.")
     .min(0, "A jelentős hiba értékhatára nem lehet negatív.")
     .nullable()
