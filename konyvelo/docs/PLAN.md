@@ -1,6 +1,6 @@
 # Terv – architektúra, technológiák, adatmodell
 
-> Állapot: **TERVEZET, jóváhagyásra vár** · 2026.10.20.
+> Állapot: **JÓVÁHAGYVA** · 2026.10.20. (a döntéseket lásd a 9. pontban)
 > Alapja: [`REQUIREMENTS.md`](./REQUIREMENTS.md). A hivatkozott pontokat (pl. „K 5.4”) onnan veszem.
 
 ## 1. Alapdöntések röviden
@@ -19,7 +19,9 @@
 | Tesztek | **Vitest** (egység és adatbázis-integráció valódi PostgreSQL-lel), **Playwright** + **axe-core** (végponttól végpontig és akadálymentesség) | A könyvelési szabályokat valódi adatbázison is teszteljük |
 | Futtatás | **Docker Compose** (alkalmazás + PostgreSQL); fejlesztéshez helyi PostgreSQL | Egy paranccsal indítható |
 
-A régi kód (Next.js, Prisma stb.) érintetlen marad, az új projekt teljesen önálló a `konyvelo/` könyvtárban.
+A régi kód (Next.js, Prisma stb.) érintetlen marad, az új projekt teljesen önálló a `konyvelo/` könyvtárban. A régi kódból semmit nem használunk fel, és nem is költöztetjük be.
+
+**Rögzített fő verziók** (jól bevált, stabil fővonalak): Node.js 22, TypeScript 5.9, Fastify 5, Drizzle ORM 0.45, pg 8, PostgreSQL 16, Zod 4, React 19, React Router 7, TanStack Query 5, Vite 7, Vitest 4, Playwright 1.56.
 
 ## 2. Projektszerkezet
 
@@ -181,7 +183,10 @@ A fejlécben mindig látszik: a választott cég és üzleti év, valamint egy k
 
 ### 5.2 Gyors rögzítés billentyűzetről
 
-- **Alt+N** új tétel bárhonnan; **Ctrl+Enter** mentés; **Esc** mégse; **Alt+S** sablon választása; **?** gyorsbillentyű-súgó. A böngésző saját billentyűit (Ctrl+N, Ctrl+S) nem írjuk felül.
+- **Új tétel:** **Alt+N** (csak Ctrl nélkül, mert a magyar billentyűzeten az AltGr+N = Ctrl+Alt+N a `}` jelet írja), **F2** bárhonnan, valamint **N**, ha a fókusz nem beviteli mezőben van. Macen az Option+N karaktert ír, ott az F2 és az N a fő gyorsbillentyű.
+- **Ctrl+Enter** mentés; **Esc** mégse; **Alt+L** sablon választása; **?** gyorsbillentyű-súgó. A böngésző saját billentyűit (Ctrl+N, Ctrl+S) nem írjuk felül.
+- Ellenőrzés (2026.10.20.): a Chromium (Chrome, Edge) gyorsbillentyű-táblája szerint az Alt+N, az Alt+L és az F2 szabad. A Firefox magyar menüsorában az Alt+N a „Nézet” menü hozzáférési billentyűje; az alkalmazás elnyeli az alapértelmezett műveletet, ezt magyar Firefoxon kézzel is ki kell próbálni. Az eredetileg tervezett Alt+S-t elvetettük (Firefoxban „Súgó”, illetve „Előzmények”).
+- **A gyorsbillentyűk a felületen is láthatók:** a gombok tooltipjében (pl. „Új tétel – Alt+N, F2 vagy N”), a menüben a parancs mellett, és a **?** billentyűvel megnyíló súgóablakban.
 - A tételsorokban **Enter/Tab** lépés a következő mezőre, a sor végén új sor.
 - **Számlakereső**: számra (`38` → 381, 384…) és névre („bank”) is keres, nyilakkal és Enterrel választható.
 - Összegmező: `12500` vagy `12 500` is jó, kilépéskor `12 500` formára áll; `=` a sorban a még hiányzó különbözetet írja be.
@@ -230,9 +235,10 @@ A fejlécben mindig látszik: a választott cég és üzleti év, valamint egy k
 
 A 150–169. § és az 1–2. melléklet bemásolása után a `REQUIREMENTS.md` ⚠️ pontjait véglegesítem; ha valami eltér a fenti feltételezésektől (pl. bizonylatkellékek, mérlegsorok), azt a megfelelő lépésnél jelzem és javítom.
 
-## 9. Jóváhagyandó döntések
+## 9. Döntések (2026.10.20.)
 
-1. A technológiai javaslat (TypeScript, Fastify, PostgreSQL, React) megfelelő?
-2. A 6 pontos főmenü és a gyorsbillentyűk (főleg **Alt+N** az új tételhez) megfelelők?
-3. A szerepkörök (Adminisztrátor, Vezető könyvelő, Könyvelő, Megtekintő) megfelelők?
-4. Egy telepítés **több céget** is kezelhessen (könyvelőiroda), ahogy a terv feltételezi?
+1. **Technológia:** A) változat – TypeScript, Fastify, Drizzle, PostgreSQL, React. A régi Next.js + Prisma kódot nem használjuk fel és nem költöztetjük be; érintetlen marad.
+2. **Főmenü:** a 6 pontos menü marad.
+3. **Gyorsbillentyűk:** Alt+N (Ctrl nélkül), F2 és N (beviteli mezőn kívül) az új tételhez; Alt+L a sablonhoz. A gyorsbillentyűk a felületen tooltipben és súgóablakban is láthatók.
+4. **Szerepkörök:** Adminisztrátor, Vezető könyvelő, Könyvelő, Megtekintő.
+5. **Több cég:** egy telepítés több céget kezel (könyvelőiroda).

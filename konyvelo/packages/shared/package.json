@@ -1,0 +1,17 @@
+{
+  "name": "@konyvelo/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@konyvelo/domain": "0.1.0",
+    "zod": "^4.1.12"
+  }
+}
