@@ -26,6 +26,7 @@ type Values = {
   fxRateSource: CompanyCreateInput["fxRateSource"];
   reversalMethod: CompanyDto["reversalMethod"];
   cashClosingLimit: string;
+  audited: boolean;
 };
 
 function initialValues(c?: CompanyDto): Values {
@@ -44,6 +45,7 @@ function initialValues(c?: CompanyDto): Values {
       c?.significantErrorThreshold != null ? formatHuf(c.significantErrorThreshold, { withUnit: false }) : "",
     fxRateSource: c?.fxRateSource ?? "MNB",
     reversalMethod: c?.reversalMethod ?? "SWAP",
+    audited: c?.audited ?? false,
     cashClosingLimit: c?.cashClosingLimit != null ? formatHuf(c.cashClosingLimit, { withUnit: false }) : "",
   };
 }
@@ -80,7 +82,7 @@ export function CompanyForm({
           {...p}
           {...extra}
           readOnly={readOnly}
-          value={form.values[key]}
+          value={String(form.values[key])}
           onChange={(e) => form.set(key, e.target.value as never)}
           onBlur={() => form.blur(key)}
         />
@@ -196,6 +198,15 @@ export function CompanyForm({
           >
             {text("cashClosingLimit", { inputMode: "decimal" })}
           </Field>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.values.audited}
+              disabled={readOnly}
+              onChange={(e) => form.set("audited", e.target.checked)}
+            />{" "}
+            A beszámolót könyvvizsgáló ellenőrzi
+          </label>
           <Field label="A sztornó módja" error={form.errors.reversalMethod} help="sztornoModja" required hint="A számviteli politika szerint. A már könyvelt sztornókat nem érinti.">
             {(p) => (
               <select {...p} value={form.values.reversalMethod} onChange={(e) => form.set("reversalMethod", e.target.value as Values["reversalMethod"])}>

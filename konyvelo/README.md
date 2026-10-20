@@ -14,7 +14,7 @@ Magyar nyelvű, kettős könyvvitelt vezető webalkalmazás. A követelmények a
 | 2. Számlatükör, partnerek | alapértelmezett számlatükör, szerkesztő, számlakereső, partnerek | ✅ kész (mérleg- és eredménykimutatás-sor hozzárendeléssel az Szt. 1–2. melléklete szerint) |
 | 3. Bizonylatok és tételek | rögzítés, egyensúly, előnézet, könyvelés hézagmentes sorszámmal, sztornó, helyesbítés, sablonok, rögzítési határidő, Teendők | ✅ kész |
 | 4. Analitika, bank, pénztár | nyitott tételek, kiegyenlítés (rögzítéskor vagy utólag), korosítás, főkönyv–analitika egyeztetés, bank- és pénztárnapló, negatív pénztár tiltása, pénztármaximum | ✅ kész |
-| 5. Kimutatások | | ⏳ |
+| 5. Kimutatások | főkönyvi kivonat, naplófőkönyv, karton, mérleg („A”), eredménykimutatás (összköltség), előző év, Ft / ezer Ft, CSV, nyomtatás/PDF | ✅ kész |
 | 6. Zárás | | ⏳ |
 | 7. NAV Online Számla import | | ⏳ |
 | 8. Mentés, export, Docker | | ⏳ |
@@ -113,7 +113,17 @@ Kb. 10 perc. Indítás után (`npm run dev`, majd http://localhost:5173) üres a
 4. **Partnerek → Nyitott tételek**: korosítás (nem lejárt, 1–30, 31–60… nap); **Egyeztetés**: a 454 és 311 főkönyvi egyenlege egyezik az analitikával.
 5. **Könyvelés → Bank és pénztár**: futó egyenleg; írja be a kivonat záró egyenlegét, és a rendszer jelzi, egyezik-e. Pénztárnál negatív egyenleget nem enged; a Cégadatoknál megadható a napi pénztár-záróegyenleg maximuma.
 
-**6. Amit még érdemes megnézni**
+**6. Kimutatások (5. lépés)**
+
+1. **Kimutatások → Főkönyvi kivonat**: számlánként nyitó egyenleg, időszaki és halmozott forgalom, záró egyenleg, számlaosztályonként részösszeggel. Alul zöld ellenőrzés: minden oszlopban Σ tartozik = Σ követel. A számlaszámra kattintva a számla kartonja nyílik meg.
+2. **Naplófőkönyv**: az összes könyvelt tétel időrendben; a bizonylatszám kattintható.
+3. **Karton**: válassza a `454`-et – a szállítói számlák és kifizetések futó egyenleggel. Partnert is választhat (pl. Irodaszer Kft.), akkor csak az ő tételei látszanak.
+4. **Mérleg**: a fejlécben „Belső kimutatás – nem minősül közzétett beszámolónak”, alul „A kimutatás a könyvelt tételek alapján készült.” és aláírási hely. Ellenőrzés: eszközök összesen = források összesen. A tárgyévi eredmény a D.VII Adózott eredmény soron. Próbálja ki: *Pénzegység: ezer Ft*, *Részletes sorok*.
+5. Pipálja be a **Közzétételi példány**-t: a belső felirat eltűnik, és – mivel a Cégadatoknál nincs bejelölve a könyvvizsgálat – megjelenik: „A közzétett adatok könyvvizsgálattal nincsenek alátámasztva.” (Szt. 154. § (3)). Ha a Cégadatoknál bejelöli „A beszámolót könyvvizsgáló ellenőrzi”, ez a szöveg elmarad.
+6. **Eredménykimutatás**: összköltség-eljárással, I–X sorok és A–D eredmények; az előző év oszlopa az egy évvel korábbi időszak.
+7. Bármelyik kimutatásnál: **Letöltés (CSV, Excel)** – Excelben dupla kattintással megnyílik; **Nyomtatás / PDF** – a böngésző nyomtatási ablakában „Mentés PDF-ként”. Nyomtatásban csak maga a kimutatás látszik.
+
+**7. Amit még érdemes megnézni**
 
 - *Helyesbítő bizonylat*: a `BANK-2026-00001` oldalán „Helyesbítő bizonylat” – csak a különbözetet kell rögzíteni, az eredeti tételei felül látszanak.
 - *Beállítások → Audit napló*: minden lépés (piszkozat, könyvelés, sztornó) benne van; a „Sértetlenség ellenőrzése” gomb ellenőrzi a hash-láncot.

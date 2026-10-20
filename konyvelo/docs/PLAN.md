@@ -161,7 +161,7 @@ Mind lekérdezés a könyvelt tételekből; bármely időszakra, képernyőn, CS
 - **Naplófőkönyv**: időrendben minden tétel, számlánkénti tartozik/követel oszlopokkal, oldalankénti és göngyölített összesítéssel.
 - **Főkönyvi kivonat**: számlánként nyitó egyenleg, időszaki és halmozott tartozik/követel forgalom, záró egyenleg; számlaosztályonkénti és végösszeggel (Σ T = Σ K ellenőrzés).
 - **Karton**: egy számla vagy partner tételei, futó egyenleggel.
-- **Egyszerűsített mérleg („A” változat)** és **összköltséges eredménykimutatás**: tárgyév és előző év oszlop, valamint jelentős hiba esetén külön oszlop (K 5.4, K 6.3), Ft-ban és ezer Ft-ban; aláírási blokk (K 6.4). „Tájékoztató jellegű” felirattal.
+- **Egyszerűsített mérleg („A” változat)** és **összköltséges eredménykimutatás**: tárgyév és előző év oszlop, valamint jelentős hiba esetén külön oszlop (K 5.4, K 6.3 – a 6. lépésben, az évzárással), Ft-ban és ezer Ft-ban; aláírási blokk (K 6.4). Fejléc: „Belső kimutatás – nem minősül közzétett beszámolónak”, lábjegyzet: „A kimutatás a könyvelt tételek alapján készült.” *Közzétételi példány* módban a belső felirat elmarad, és könyvvizsgálat hiányában az Szt. 154. § (3) szerinti szöveg kerül rá. A még le nem zárt korábbi évek eredménye az évzárásig a D.IV soron, a főkönyvi kivonatban külön sorban jelenik meg. Export: CSV (magyar Excelhez) és nyomtatás/PDF a böngészőből.
 - Analitikai kimutatások (4.6), pénztárjelentés (4.7).
 
 ### 4.11 Mentés és export

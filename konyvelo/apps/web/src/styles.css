@@ -891,3 +891,106 @@ tr.clickable:hover td {
 .sub-nav a:hover {
   background: var(--surface);
 }
+
+/* ---------- Kimutatások ---------- */
+
+.report-heading {
+  margin-bottom: 12px;
+}
+.report-company {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+}
+.report-title {
+  margin: 12px 0 2px;
+  text-align: center;
+}
+.report-period {
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+}
+.report-notice {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-weight: 600;
+  text-align: center;
+}
+.report-table td,
+.report-table th {
+  padding: 4px 8px;
+}
+.report-subtotal td,
+.report-subtotal th {
+  font-weight: 600;
+  background: var(--surface);
+}
+.report-total td,
+.report-total th {
+  font-weight: 700;
+  border-top: 2px solid var(--text);
+  background: transparent;
+}
+.report-footer {
+  margin-top: 16px;
+  font-size: 0.9rem;
+}
+.signature {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 32px;
+}
+.signature-line {
+  min-width: 14rem;
+  padding-top: 4px;
+  border-top: 1px solid var(--text);
+  text-align: center;
+}
+
+/* Nyomtatás / PDF: csak a kimutatás látszik, fekete-fehérben. */
+@media print {
+  .app-header,
+  .main-nav,
+  .skip-link,
+  .toast-region,
+  .no-print {
+    display: none !important;
+  }
+  :root {
+    --bg: #fff;
+    --surface: #f2f2f2;
+    --text: #000;
+    --muted: #333;
+    --border: #999;
+  }
+  body,
+  main {
+    background: #fff;
+    color: #000;
+    padding: 0;
+    margin: 0;
+    max-width: none;
+  }
+  .card.report {
+    border: 0;
+    padding: 0;
+  }
+  .table-wrap {
+    overflow: visible;
+  }
+  .report-table {
+    font-size: 9pt;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  tr {
+    break-inside: avoid;
+  }
+}

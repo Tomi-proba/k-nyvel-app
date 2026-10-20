@@ -12,3 +12,4 @@ export * from "./report-lines";
 export * from "./report-mapping";
 export * from "./documents";
 export * from "./subledger";
+export * from "./reports";

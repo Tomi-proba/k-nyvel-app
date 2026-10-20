@@ -61,6 +61,7 @@ export const companies = pgTable("companies", {
   fxRateSource: text("fx_rate_source").notNull().default("MNB").$type<"MNB" | "ECB" | "BANK" | "VAT_ACT">(),
   reversalMethod: text("reversal_method").notNull().default("SWAP").$type<"SWAP" | "NEGATIVE">(),
   cashClosingLimit: bigint("cash_closing_limit", { mode: "number" }),
+  audited: boolean("audited").notNull().default(false),
   createdAt: ts("created_at").notNull().defaultNow(),
   createdBy: uuid("created_by").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),

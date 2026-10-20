@@ -498,6 +498,46 @@ test("analitika: utólagos párosítás, kiegyenlítés rögzítéskor, egyeztet
   await expectAccessible(page, "Banknapló");
 });
 
+test("kimutatások: főkönyvi kivonat, naplófőkönyv, karton, mérleg, eredménykimutatás, CSV", async ({ page }) => {
+  await login(page);
+  await page.getByRole("navigation", { name: "Főmenü" }).getByRole("link", { name: "Kimutatások" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Főkönyvi kivonat" })).toBeVisible();
+  await expect(page.getByText("Ellenőrzés: minden oszlopban Σ tartozik = Σ követel.")).toBeVisible();
+  await expectAccessible(page, "Főkönyvi kivonat");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Letöltés (CSV, Excel)" }).click();
+  expect((await download).suggestedFilename()).toMatch(/^fokonyvi-kivonat_.*\.csv$/);
+
+  const tabs = page.getByRole("navigation", { name: "Kimutatások almenü" });
+  await tabs.getByRole("link", { name: "Naplófőkönyv" }).click();
+  await expect(page.getByRole("link", { name: "BANK-2026-00002" }).first()).toBeVisible();
+  await expectAccessible(page, "Naplófőkönyv");
+
+  await tabs.getByRole("link", { name: "Karton" }).click();
+  const acc = page.getByRole("combobox", { name: "Számla" });
+  await acc.fill("454");
+  await acc.press("Enter");
+  await expect(page.getByRole("heading", { level: 2, name: /Karton – 454 Szállítók/ })).toBeVisible();
+  await expectAccessible(page, "Karton");
+
+  await tabs.getByRole("link", { name: "Mérleg" }).click();
+  await expect(page.getByText("Belső kimutatás – nem minősül közzétett beszámolónak")).toBeVisible();
+  await expect(page.getByText("A kimutatás a könyvelt tételek alapján készült.")).toBeVisible();
+  await expect(page.getByText("Ellenőrzés: eszközök összesen = források összesen.")).toBeVisible();
+  await expect(page.getByRole("row", { name: /ESZKÖZÖK \(AKTÍVÁK\) ÖSSZESEN/ })).toBeVisible();
+  await expect(page.getByText("Tájékoztató jellegű")).toHaveCount(0);
+  await expectAccessible(page, "Mérleg");
+  await page.getByLabel("Közzétételi példány").check();
+  await expect(page.getByText("Belső kimutatás – nem minősül közzétett beszámolónak")).toBeHidden();
+  await expect(page.getByText("A közzétett adatok könyvvizsgálattal nincsenek alátámasztva.")).toBeVisible();
+
+  await tabs.getByRole("link", { name: "Eredménykimutatás" }).click();
+  await expect(page.getByRole("row", { name: /^D Adózott eredmény/ })).toBeVisible();
+  await page.getByLabel("Pénzegység").selectOption("THOUSAND");
+  await expect(page.getByText(/adatok ezer Ft-ban/)).toBeVisible();
+  await expectAccessible(page, "Eredménykimutatás");
+});
+
 test("mobil nézet: nincs vízszintes görgetés, a menü elérhető", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await login(page);

@@ -128,6 +128,8 @@ const companyFields = {
     .min(0, "A pénztár-záróegyenleg maximuma nem lehet negatív.")
     .nullable()
     .optional(),
+  /** Könyvvizsgáló ellenőrzi-e a beszámolót (Szt. 154. § (3)). */
+  audited: z.boolean().optional(),
   reversalMethod: z.enum(REVERSAL_METHODS as [ReversalMethod, ...ReversalMethod[]], { error: "Válassza ki a sztornó módját." }),
 };
 

@@ -38,6 +38,7 @@ function toDto(c: CompanyRow): CompanyDto {
     fxRateSource: c.fxRateSource,
     reversalMethod: c.reversalMethod,
     cashClosingLimit: c.cashClosingLimit,
+    audited: c.audited,
     createdAt: c.createdAt.toISOString(),
   };
 }

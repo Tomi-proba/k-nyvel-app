@@ -37,6 +37,7 @@ export type CompanyDto = {
   reversalMethod: "SWAP" | "NEGATIVE";
   /** A pénzkezelési szabályzat szerinti napi pénztár-záróegyenleg maximuma (fillér). */
   cashClosingLimit: number | null;
+  audited: boolean;
   createdAt: string;
 };
 
