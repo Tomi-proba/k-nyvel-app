@@ -148,8 +148,9 @@ Magyar nyelv, ÉÉÉÉ.HH.NN. dátumformátum, Ft, ezres tagolás szóközzel, W
 1. **Szt. 150–169. §** – a könyvvizsgálat utáni rész: letétbe helyezés és közzététel (153–154. §), könyvvezetés (159–164. §: kettős könyvvitel, számlarend, napló, főkönyv), bizonylati elv és fegyelem, bizonylat kellékei, helyesbítés, szigorú számadás, megőrzés (165–169. §).
 2. **Szt. 1. számú melléklet** (mérleg „A” változat) és **2. számú melléklet** (összköltség-eljárású eredménykimutatás) – a kimutatások sorainak pontos szövegéhez.
 
-## Nyitott kérdések jóváhagyáshoz
+## Döntések (a megrendelő jóváhagyásával, 2026.10.20.)
 
-1. **Beszámoló:** az MVP az **egyszerűsített éves beszámoló** mérlegét („A” változat) és **összköltség-eljárású** eredménykimutatását állítsa elő tájékoztató jelleggel?
-2. **Deviza:** az MVP csak HUF-os könyvvezetést támogasson?
-3. **Hiteles archiválás:** maradjon későbbi modul?
+1. **Beszámoló:** az MVP tájékoztató jelleggel az **egyszerűsített éves beszámoló** mérlegét („A” változat) és **összköltség-eljárású** eredménykimutatását állítja elő.
+2. **Pénznem:** az MVP forintban vezeti a könyveket. A devizás bizonylatoknál az **eredeti devizanemet, a devizaösszeget, az alkalmazott árfolyamot, annak forrását és dátumát** is tárolni kell, hogy a devizás könyvvezetés később bővíthető legyen.
+3. **Hiteles archiválás:** későbbi modul, de az **adatmodellnek fel kell rá készülnie** (megőrzési határidő, tartalmi hash, hitelesítési mezők).
+4. **Régi kód:** a repository meglévő kódja érintetlen marad; az új projekt a `konyvelo/` könyvtárban készül.
