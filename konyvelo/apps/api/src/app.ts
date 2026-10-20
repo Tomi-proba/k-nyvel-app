@@ -14,10 +14,21 @@ import { auditModule } from "./modules/audit";
 import { authModule } from "./modules/auth";
 import { companiesModule } from "./modules/companies";
 import { fiscalYearsModule } from "./modules/fiscal-years";
+import { documentsModule } from "./modules/documents";
 import { partnersModule } from "./modules/partners";
+import { templatesModule } from "./modules/templates";
 
 /** A bekapcsolt modulok. Új modul felvétele: ide kell beírni. */
-export const MODULES: AppModule[] = [authModule, companiesModule, fiscalYearsModule, accountsModule, partnersModule, auditModule];
+export const MODULES: AppModule[] = [
+  authModule,
+  companiesModule,
+  fiscalYearsModule,
+  accountsModule,
+  partnersModule,
+  templatesModule,
+  documentsModule,
+  auditModule,
+];
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 

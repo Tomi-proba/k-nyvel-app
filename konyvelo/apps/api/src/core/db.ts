@@ -21,6 +21,8 @@ export const PG_UNIQUE_VIOLATION = "23505";
 export const PG_EXCLUSION_VIOLATION = "23P01";
 export const PG_CHECK_VIOLATION = "23514";
 export const PG_FOREIGN_KEY_VIOLATION = "23503";
+/** Triggerből dobott (RAISE EXCEPTION) hiba – az üzenete magyar, a felhasználónak szól. */
+export const PG_RAISE = "P0001";
 
 export function pgErrorCode(err: unknown): string | undefined {
   let e: unknown = err;

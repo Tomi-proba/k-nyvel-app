@@ -9,6 +9,8 @@ import {
   NORMAL_SIDE_LABELS,
   SUBLEDGER_LABELS,
   SUBLEDGERS,
+  missingMapping,
+  reportKind,
   searchAccounts,
   type AccountNature,
   type NormalSide,
@@ -38,30 +40,12 @@ type FormValues = {
   isLine: string;
 };
 
-/** Melyik kimutatásba kerülhet a számla (Szt. 160. § (2)–(5)). */
-function reportKind(number: string): "BS" | "IS" | "NONE" {
-  if (!/^\d/.test(number) || number.startsWith("49")) return "NONE";
-  const c = number[0]!;
-  if ("1234".includes(c)) return "BS";
-  if ("589".includes(c)) return "IS";
-  return "NONE";
-}
-
 const lineOptionLabel = (l: { code: string; label: string; ofWhich?: boolean }) => {
   const depth = l.code.split(".").length - 1;
   return `${"\u00a0\u00a0".repeat(depth)}${l.code} ${l.label}`;
 };
 const BS_OPTIONS = BALANCE_SHEET_LINES;
 const IS_OPTIONS = INCOME_STATEMENT_LINES.filter((l) => !l.formula);
-
-/** Hiányzik-e a kimutatássor egy könyvelhető, aktív számlánál? */
-export function missingMapping(a: AccountDto): boolean {
-  if (!a.isActive || a.hasChildren) return false;
-  const kind = reportKind(a.number);
-  if (kind === "BS") return !a.bsLineDebit || !a.bsLineCredit;
-  if (kind === "IS") return !a.isLine && !a.number.startsWith("59");
-  return false;
-}
 
 /** Új számla, illetve meglévő szerkesztése párbeszédablakban. */
 function AccountDialog({

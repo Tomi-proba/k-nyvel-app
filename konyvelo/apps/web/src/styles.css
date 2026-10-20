@@ -278,6 +278,8 @@ main {
 
 .table-wrap {
   overflow-x: auto;
+  /* A rejtett (sr-only) feliratok is a görgethető dobozon belül maradjanak. */
+  position: relative;
 }
 table {
   width: 100%;
@@ -682,4 +684,184 @@ tr.clickable {
 }
 tr.clickable:hover td {
   background: var(--surface);
+}
+
+/* ---------- Bizonylatrögzítés ---------- */
+
+.entry-form {
+  max-width: 1100px;
+}
+.form-row-4 {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.alert-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border-color: var(--warning);
+}
+.small {
+  font-size: 0.875rem;
+}
+.input-narrow {
+  max-width: 8rem;
+}
+.dialog-wide {
+  width: min(820px, calc(100vw - 32px));
+}
+.lines-table td {
+  padding: 4px 6px;
+}
+.lines-table input {
+  width: 100%;
+}
+.lines-table .col-no {
+  width: 2.5rem;
+  white-space: nowrap;
+}
+.lines-table .col-account {
+  min-width: 260px;
+}
+.lines-table .col-amount {
+  width: 10rem;
+  min-width: 8rem;
+}
+.amount-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.balance-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.balance-bar.is-unbalanced .balance-diff {
+  color: var(--danger);
+}
+.balance-bar.is-balanced .balance-ok {
+  color: var(--success);
+}
+.preview-grid {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: 4px 16px;
+  margin: 0 0 12px;
+}
+.preview-grid dt {
+  color: var(--muted);
+}
+.preview-grid dd {
+  margin: 0;
+}
+.template-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.template-list li {
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.template-list li:last-child {
+  border-bottom: 0;
+}
+.template-list li.is-active {
+  background: var(--surface-2);
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.template-list .badge {
+  margin-left: 6px;
+}
+.radio-group {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+.radio-group legend {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.radio-group label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.radio-group input {
+  width: auto;
+  min-height: 0;
+}
+.template-line {
+  grid-template-columns: minmax(220px, 2fr) 1fr 1fr auto;
+  align-items: end;
+}
+.plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.pager {
+  justify-content: center;
+  margin-top: 8px;
+}
+.deadline-note {
+  color: var(--warning);
+}
+.nowrap {
+  white-space: nowrap;
+}
+.hash {
+  word-break: break-all;
+}
+
+/* ---------- Teendők ---------- */
+
+.todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.todo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+}
+.todo:hover {
+  background: var(--surface);
+}
+.todo-title {
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: underline;
+}
+.todo-detail {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.todo-danger {
+  border-left-color: var(--danger);
+}
+.todo-warning {
+  border-left-color: var(--warning);
+}
+.todo-info {
+  border-left-color: var(--primary);
 }

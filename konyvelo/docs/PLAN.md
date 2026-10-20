@@ -102,21 +102,23 @@ Jelölés: PK = elsődleges kulcs, FK = idegen kulcs. Minden táblában van `cre
 
 ### 4.5 Bizonylatok és könyvelési tételek (a rendszer magja)
 
-- **document_types**: code (pl. `VSZ` vevőszámla, `SZSZ` szállítói számla, `BANK`, `PB` pénztár-bevétel, `PK` pénztár-kiadás, `VEGY` vegyes, `NYIT` nyitás, `ZAR` zárás, `HELY` helyesbítő), name, prefix.
-- **document_sequences**: (document_type_id, fiscal_year_id) → next_number; soronként zárolva, így hézagmentes (K 3.5).
+- **Bizonylattípusok** (kód, nem tábla: `packages/domain/src/documents.ts`): `SZSZ` szállítói számla, `VSZ` vevőszámla, `BANK`, `PB` pénztárbevételi, `PK` pénztárkiadási, `VEGY` vegyes, `SZT` sztornó (csak a rendszer hozza létre), `HELY` helyesbítő (csak eredetire hivatkozva); a 6. lépésben `NYIT`, `ZAR`. Típusonként: kötelező partner, külső szám, teljesítési dátum.
+- **document_sequences**: (company_id, fiscal_year_id, doc_type) → last_number. A sorszámot a **könyvelés** adja (a piszkozatnak nincs sorszáma), a sor zárolásával; sikertelen könyvelésnél a sorszám sem fogy el, így hézagmentes (K 3.5). Formátum: `SZSZ-2026-00001`.
 - **documents** (bizonylat, K 3.3):
   - azonosítás: serial_number (rendszer adja, pl. `BANK-2026-00012`), external_number (pl. a szállítói számla száma), document_type_id, fiscal_year_id
   - tartalom: description (a gazdasági művelet tartalma), issuer_name, partner_id, issue_date (kelt), fulfillment_date (teljesítés), due_date, accounting_date (könyvelés dátuma)
   - **deviza (döntés 2.)**: currency, fx_amount, fx_rate, fx_rate_source, fx_rate_date. A könyvelés mindig HUF-ban történik; ezek a mezők a későbbi devizás könyvvezetést készítik elő.
   - jóváhagyás: approved_by (utalványozó), checked_by (ellenőrző), posted_by, posted_at
-  - állapot: `DRAFT` (szabadon szerkeszthető) → `POSTED` (végleges, módosíthatatlan) → `REVERSED` (sztornózva)
+  - állapot: `DRAFT` (szabadon szerkeszthető, törölhető) → `POSTED` (végleges, módosíthatatlan). A „sztornózva” állapot nem tárolt mező, hanem a sztornó bizonylat hivatkozásából adódik, így a könyvelt sor soha nem módosul. Adatbázis-trigger tiltja a könyvelt bizonylat és tételsorai módosítását, törlését, valamint a kiegyensúlyozatlan vagy lezárt időszakba eső könyvelést.
   - kapcsolatok: reverses_document_id (sztornó), corrects_document_id (helyesbítő)
   - előző évet érintő hiba (K 5.4): affects_fiscal_year_id, error_kind (`SIGNIFICANT` | `NOT_SIGNIFICANT`, a rendszer számolja)
   - eredet: source (`MANUAL` | `TEMPLATE` | `NAV_IMPORT` | `BANK` | `CASH` | `OPENING` | `CLOSING`), nav_invoice_id
   - **archiválásra felkészítés (döntés 3.)**: content_hash (SHA-256 a könyveléskori teljes tartalomról), chain_prev_hash (cégenkénti hash-lánc), retention_until, archive_status (`NONE` | `PACKAGED` | `ARCHIVED`), authenticity_method (`NONE` | `QUALIFIED_E_SIGNATURE` | `TIMESTAMP` | `AUTHENTIC_COPY`), authenticity_ref
-- **journal_lines** (kontírozás): document_id, line_no, account_id, side (`D` tartozik | `C` követel), amount_huf (fillér, > 0), fx_amount (opcionális), partner_id, open_item_id, description, due_date. A napló a tételek könyvelési dátum és sorszám szerinti sorrendje, a főkönyv számlánkénti csoportosítása – mindkettő lekérdezés, nem külön adat (K 4.1).
+- **journal_lines** (kontírozás; piszkozatban a sor félkész is lehet, könyveléskor mindhárom kötelező): document_id, line_no, account_id, side (`D` tartozik | `C` követel), amount_huf (fillér, > 0), fx_amount (opcionális), partner_id, open_item_id, description, due_date. A napló a tételek könyvelési dátum és sorszám szerinti sorrendje, a főkönyv számlánkénti csoportosítása – mindkettő lekérdezés, nem külön adat (K 4.1).
 - **attachments**: document_id, file_name, mime_type, size, sha256, storage_key, és archiváláshoz is_authentic_copy, authenticity_ref, retention_until. A fájlok lemezen vagy S3-kompatibilis tárolóban vannak, nem az adatbázisban. MVP-ben a csatolmány nem minősül hiteles másolatnak (K 3.6).
-- **posting_templates** (gyakori kontírozások): name, shortcut (pl. `ANY` anyagbeszerzés), partner_id (opcionális), lines (jsonb: számla, oldal, összegképlet `NET` | `VAT` | `GROSS` | arány). A rögzítéskor beírt bruttó összegből és áfakulcsból a sablon kitölti a sorokat (pl. 5xx tartozik nettó, 466 tartozik áfa, 454 követel bruttó). Ez csak kontírozási segítség, áfa-analitika nincs.
+- **Sztornó**: új, azonnal könyvelt `SZT` bizonylat ugyanazokkal a tételekkel **fordított oldalon**, ok megadásával; egy bizonylat csak egyszer sztornózható (egyedi index). **Helyesbítő** (`HELY`): csak a különbözetet könyveli; ha az eredeti más üzleti évbe tartozik, `affects_fiscal_year_id` jelöli (K 5.4).
+- **Rögzítési határidő** (K 3.7, Szt. 165. § (3)): a domain számolja (pénztár: a pénzmozgás napja; bank: tárgyhót követő hó 15.; egyéb: tárgynegyedévet követő hó vége); az űrlap, az előnézet, a bizonylat és a Kezdőlap Teendők kártyája jelzi.
+- **posting_templates** (gyakori kontírozások; új cégnél 6 alapértelmezett sablon): name, shortcut (pl. `ANY` anyagbeszerzés), partner_id (opcionális), lines (jsonb: számla, oldal, összegképlet `NET` | `VAT` | `GROSS` | arány). A rögzítéskor beírt bruttó összegből és áfakulcsból a sablon kitölti a sorokat (pl. 5xx tartozik nettó, 466 tartozik áfa, 454 követel bruttó). Ez csak kontírozási segítség, áfa-analitika nincs.
 
 ### 4.6 Analitika: vevők, szállítók, nyitott tételek
 

@@ -108,3 +108,10 @@ export function parseDateHu(input: string, defaultYear?: number): IsoDate | null
   const iso = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   return isValidIsoDate(iso) ? iso : null;
 }
+
+const MONTHS_HU = ["január", "február", "március", "április", "május", "június", "július", "augusztus", "szeptember", "október", "november", "december"];
+
+/** "2026-09-15" → "2026. szeptember" */
+export function monthLabelHu(iso: IsoDate): string {
+  return `${iso.slice(0, 4)}. ${MONTHS_HU[Number(iso.slice(5, 7)) - 1]}`;
+}

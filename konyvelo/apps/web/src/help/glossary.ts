@@ -83,6 +83,42 @@ export const GLOSSARY = {
     title: "Magánszemély partner",
     text: "Magánszemélynél csak a könyveléshez szükséges adatokat tároljuk (adattakarékosság, GDPR 5. cikk (1) c)); adószámot nem. A megőrzési idő alatt az adatai nem törölhetők.",
   },
+  bizonylat: {
+    title: "Bizonylat",
+    text: "A gazdasági műveletet alátámasztó irat (számla, bankkivonat, pénztárbizonylat, belső bizonylat). Könyvelni csak szabályszerű bizonylat alapján lehet (Szt. 165–167. §). Könyveléskor a rendszer típusonként és üzleti évenként folyamatos sorszámot ad.",
+  },
+  kelt: {
+    title: "Kelt",
+    text: "A bizonylat kiállításának napja (Szt. 167. § (1) d)). Számlánál a számla kelte, bankkivonatnál a kivonat napja.",
+  },
+  teljesites: {
+    title: "Teljesítés",
+    text: "Az a nap vagy időszak, amikor a gazdasági művelet megtörtént (pl. a szolgáltatás teljesítése). A rögzítési határidő ettől számít (Szt. 165. § (3)).",
+  },
+  konyvelesDatuma: {
+    title: "Könyvelés dátuma",
+    text: "Erre a napra kerül a tétel a naplóba és a főkönyvbe; ez határozza meg az üzleti évet és a havi időszakot. Lezárt időszakra nem lehet könyvelni.",
+  },
+  tartozikKovetel: {
+    title: "Tartozik és követel",
+    text: "A kettős könyvvitelben minden gazdasági műveletet két (vagy több) számlán, ellentétes oldalon kell könyvelni. A tartozik oldal a számla bal, a követel a jobb oldala. Egy bizonylaton a tartozik és a követel összegnek egyeznie kell.",
+  },
+  sztorno: {
+    title: "Sztornó",
+    text: "Egy könyvelt bizonylat teljes visszavezetése: új, saját sorszámú bizonylat ugyanazokkal a tételekkel, fordított oldalon. Az eredeti bizonylat változatlanul látható marad (Szt. 165. § (2), 167. § (7)).",
+  },
+  helyesbito: {
+    title: "Helyesbítő bizonylat",
+    text: "Egy könyvelt bizonylat részleges javítása: csak a különbözetet könyveli, és hivatkozik az eredetire. Ha az eredeti egy korábbi üzleti évbe tartozik, a rendszer előző évet érintő hibaként jelöli (Szt. 3. § (3)).",
+  },
+  rogzitesiHatarido: {
+    title: "Rögzítési határidő",
+    text: "Pénztári tételt a pénzmozgással egyidejűleg, banki tételt a kivonat megérkezésekor (a rendszer legkésőbb a tárgyhót követő hó 15-ét figyeli), egyéb bizonylatot legkésőbb a tárgynegyedévet követő hó végéig kell könyvelni (Szt. 165. § (3)).",
+  },
+  kontirozasiSablon: {
+    title: "Kontírozási sablon",
+    text: "Gyakori könyvelések mintája (pl. szállítói számla: költség tartozik nettó, 466 tartozik áfa, 454 követel bruttó). Rögzítéskor az Alt+L-lel választható; a beírt összegből kitölti a sorokat.",
+  },
 } as const;
 
 export type GlossaryKey = keyof typeof GLOSSARY;

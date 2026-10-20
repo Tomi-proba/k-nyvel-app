@@ -21,12 +21,13 @@ describe("audit napló", () => {
     expect(log.entries.map((e: { action: string }) => e.action)).toEqual([
       "fiscal_year.create",
       "company.update",
+      "templates.load_default",
       "accounts.load_default",
       "member.add",
       "company.create",
     ]);
     expect(log.entries[0].userName).toBe("Admin Anna");
-    expect((await admin.get(`/api/companies/${c.id}/audit-log/verify`)).json()).toEqual({ ok: true, count: 5 });
+    expect((await admin.get(`/api/companies/${c.id}/audit-log/verify`)).json()).toEqual({ ok: true, count: 6 });
   });
 
   it("párhuzamos módosításoknál is ép marad a lánc", async () => {
@@ -36,7 +37,7 @@ describe("audit napló", () => {
     );
     const v = (await admin.get(`/api/companies/${c.id}/audit-log/verify`)).json();
     expect(v.ok).toBe(true);
-    expect(v.count).toBe(13);
+    expect(v.count).toBe(14);
   });
 
   it("az alkalmazás nem módosíthatja és nem törölheti", async () => {
@@ -65,10 +66,10 @@ describe("audit napló", () => {
 
   it("lapozás", async () => {
     const c = await createCompany(admin);
-    for (let i = 0; i < 5; i++) await admin.patch(`/api/companies/${c.id}`, { addressLine: `Utca ${i}` });
+    for (let i = 0; i < 4; i++) await admin.patch(`/api/companies/${c.id}`, { addressLine: `Utca ${i}` });
     const first = (await admin.get(`/api/companies/${c.id}/audit-log?limit=3`)).json();
     expect(first.entries).toHaveLength(3);
-    // 8 bejegyzés: cég létrehozása, tag hozzáadása, számlatükör betöltése, 5 módosítás → 3 + 3 + 2.
+    // 8 bejegyzés: cég létrehozása, tag hozzáadása, számlatükör és sablonok betöltése, 4 módosítás → 3 + 3 + 2.
     const second = (await admin.get(`/api/companies/${c.id}/audit-log?limit=3&before=${first.nextBefore}`)).json();
     expect(second.entries).toHaveLength(3);
     expect(Number(second.entries[0].id)).toBeLessThan(Number(first.entries[2].id));

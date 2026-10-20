@@ -21,6 +21,9 @@ async function expectAccessible(page: Page, label: string) {
   await page.evaluate(() => delete document.documentElement.dataset.theme);
 }
 
+/** Összeg a mezőben: az ezres tagolás nem törő szóköz. */
+const amount = (text: string) => new RegExp(`^${text.replace(/ /g, "\\s")}$`);
+
 async function login(page: Page) {
   await page.goto("/");
   await page.getByLabel("E-mail-cím").fill(ADMIN.email);
@@ -134,8 +137,9 @@ test("gyorsbillentyűk: Alt+N, F2, N; AltGr+N nem; ? súgó; tooltip", async ({ 
   await page.getByRole("button", { name: "Új tétel" }).focus();
   await expect(page.getByRole("tooltip")).toContainText("Alt+N, F2 vagy N");
 
-  // ? → gyorsbillentyű-súgó
-  await page.locator("body").click();
+  // ? → gyorsbillentyű-súgó (a kezdőlapon, ahol nincs beviteli mező)
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: "Kezdőlap" })).toBeVisible();
   await page.keyboard.press("Shift+?");
   const dialog = page.getByRole("dialog", { name: "Gyorsbillentyűk" });
   await expect(dialog).toBeVisible();
@@ -264,6 +268,169 @@ test("partnerek: új szállító billentyűzetes számlakeresővel, keresés, in
   await expect(page.getByRole("status").getByText("A partner inaktív lett.")).toBeVisible();
 });
 
+test("bizonylat: szállítói számla sablonnal, egyensúly-ellenőrzés, előnézet, könyvelés", async ({ page }) => {
+  await login(page);
+  // Az előző tesztben inaktivált partner újra aktív (alapértelmezett kontírozása: 522 / 454, 15 nap).
+  await page.goto("/partnerek");
+  await page.getByLabel("Állapot").selectOption("INACTIVE");
+  await page.getByRole("link", { name: "Irodaszer Kft." }).click();
+  await page.getByRole("button", { name: "Aktiválás" }).click();
+  await expect(page.getByRole("status").getByText("A partner újra aktív.")).toBeVisible();
+
+  await page.locator("body").click();
+  await page.keyboard.press("F2");
+  await expect(page.getByRole("heading", { level: 1, name: "Új bizonylat" })).toBeVisible();
+  await page.getByLabel("Bizonylat típusa").selectOption("SZSZ");
+  const partner = page.getByRole("combobox", { name: "Partner" });
+  await partner.fill("iroda");
+  await partner.press("Enter");
+  await expect(partner).toHaveValue("Irodaszer Kft. (10537914-4-44)");
+  await page.getByLabel("A szállító számlaszáma").fill("IR-2026/0042");
+  await page.getByLabel("A gazdasági művelet leírása").fill("Irodabérlet, október");
+  await page.getByRole("textbox", { name: "Kelt", exact: true }).fill("2026.10.05");
+  await page.getByRole("textbox", { name: "Kelt", exact: true }).blur();
+  // A teljesítés és a könyvelés dátuma a keltet követi; a határidő a partner fizetési feltételéből.
+  await expect(page.getByRole("textbox", { name: "Teljesítés", exact: true })).toHaveValue("2026.10.05.");
+  await expect(page.getByRole("textbox", { name: "Könyvelés dátuma", exact: true })).toHaveValue("2026.10.05.");
+  await expect(page.getByRole("textbox", { name: "Fizetési határidő", exact: true })).toHaveValue("2026.10.20.");
+
+  // Alt+L: sablon – a partner alapértelmezett kontírozása az első.
+  await page.keyboard.press("Alt+l");
+  const tpl = page.getByRole("dialog", { name: "Kontírozási sablon" });
+  await expect(tpl.getByRole("option").first()).toContainText("Irodaszer Kft. – alapértelmezett kontírozás");
+  await expectAccessible(page, "Sablonválasztó");
+  await tpl.getByRole("combobox", { name: "Sablon keresése" }).press("Enter");
+  const gross = tpl.getByRole("textbox", { name: "Bruttó összeg (Ft)" });
+  await expect(gross).toBeFocused();
+  await gross.fill("127000");
+  await gross.press("Enter");
+  await expect(tpl).toBeHidden();
+  await expect(page.getByRole("combobox", { name: "1. sor: számla" })).toHaveValue("522 – Bérleti díjak");
+  await expect(page.getByRole("textbox", { name: "1. sor: tartozik összeg" })).toHaveValue(amount("100 000"));
+  await expect(page.getByRole("textbox", { name: "2. sor: tartozik összeg" })).toHaveValue(amount("27 000"));
+  await expect(page.getByRole("textbox", { name: "3. sor: követel összeg" })).toHaveValue(amount("127 000"));
+  await expect(page.getByText("A tartozik és követel oldal egyezik.")).toBeVisible();
+
+  // Eltérés: azonnal, pontos összeggel; „=” beírja a különbözetet.
+  const credit3 = page.getByRole("textbox", { name: "3. sor: követel összeg" });
+  await credit3.fill("120000");
+  await expect(page.getByText("A tartozik és követel oldal nem egyezik, eltérés: 7 000 Ft")).toBeVisible();
+  await credit3.fill("");
+  await credit3.press("=");
+  await expect(credit3).toHaveValue(amount("127 000"));
+  await expect(page.getByText("A tartozik és követel oldal egyezik.")).toBeVisible();
+  await expectAccessible(page, "Bizonylatrögzítés");
+
+  // Ctrl+Enter: előnézet; Enter: könyvelés.
+  await page.getByLabel("A gazdasági művelet leírása").press("Control+Enter");
+  const preview = page.getByRole("dialog", { name: "Előnézet – könyvelés előtt" });
+  await expect(preview).toContainText("Hatás a szállítói tartozásra: +127 000 Ft");
+  await expect(preview.getByRole("button", { name: "Könyvelés" })).toBeFocused();
+  await expectAccessible(page, "Előnézet");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { level: 1, name: "SZSZ-2026-00001" })).toBeVisible();
+  await expect(page.getByRole("status").getByText("Könyvelve: SZSZ-2026-00001")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "454 Szállítók" })).toBeVisible();
+  await expectAccessible(page, "Könyvelt bizonylat");
+});
+
+test("bizonylat: piszkozat billentyűzetes sorrögzítéssel, Teendők, banki kifizetés könyvelése", async ({ page }) => {
+  await login(page);
+  await page.keyboard.press("Alt+n");
+  await expect(page.getByRole("heading", { level: 1, name: "Új bizonylat" })).toBeVisible();
+  await page.getByLabel("Bizonylat típusa").selectOption("BANK");
+  const partner = page.getByRole("combobox", { name: "Partner" });
+  await partner.fill("iroda");
+  await partner.press("Enter");
+  await page.getByLabel("Kivonat száma").fill("2026/41");
+  await page.getByLabel("A gazdasági művelet leírása").fill("Kifizetés: IR-2026/0042");
+  await page.getByRole("textbox", { name: "Kelt", exact: true }).fill("2026.10.10");
+
+  // Sorrögzítés csak billentyűzettel: Enter a következő mezőre, a sor végén új sor.
+  const acc1 = page.getByRole("combobox", { name: "1. sor: számla" });
+  await acc1.fill("454");
+  await acc1.press("Enter");
+  await expect(acc1).toHaveValue("454 – Szállítók");
+  await acc1.press("Enter");
+  await expect(page.getByRole("textbox", { name: "1. sor: tartozik összeg" })).toBeFocused();
+  await page.keyboard.type("127000");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  const acc2 = page.getByRole("combobox", { name: "2. sor: számla" });
+  await expect(acc2).toBeFocused();
+  await page.keyboard.type("3841");
+  await page.keyboard.press("Enter");
+  await expect(acc2).toHaveValue("3841 – OTP forint számla");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("=");
+  await expect(page.getByRole("textbox", { name: "2. sor: követel összeg" })).toHaveValue(amount("127 000"));
+
+  await page.getByRole("button", { name: "Mentés piszkozatként" }).click();
+  await expect(page.getByRole("status").getByText("A piszkozat mentése sikerült.")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Piszkozat szerkesztése" })).toBeVisible();
+
+  // Egy régi pénztári piszkozat: lejárt rögzítési határidő.
+  await page.goto("/konyveles/uj?tipus=PK");
+  await page.getByLabel("A gazdasági művelet leírása").fill("Postaköltség");
+  await page.getByRole("textbox", { name: "Kelt", exact: true }).fill("2026.01.12");
+  await page.getByRole("combobox", { name: "1. sor: számla" }).fill("527");
+  await page.getByRole("combobox", { name: "1. sor: számla" }).press("Enter");
+  await page.getByRole("textbox", { name: "1. sor: tartozik összeg" }).fill("1500");
+  await page.getByRole("combobox", { name: "2. sor: számla" }).fill("381");
+  await page.getByRole("combobox", { name: "2. sor: számla" }).press("Enter");
+  await page.getByRole("textbox", { name: "2. sor: követel összeg" }).fill("1500");
+  await expect(page.getByText(/Rögzítési határidő lejárt: 2026\.01\.12\./)).toBeVisible();
+  await page.getByRole("button", { name: "Mentés piszkozatként" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Piszkozat szerkesztése" })).toBeVisible();
+
+  // Kezdőlap: a teendők kattinthatók.
+  await page.getByRole("navigation", { name: "Főmenü" }).getByRole("link", { name: "Kezdőlap" }).click();
+  const todos = page.getByRole("region", { name: /Teendők/ });
+  await expect(todos.getByRole("link", { name: /Rögzítési határidő: 1 lejárt/ })).toBeVisible();
+  await expect(todos.getByRole("link", { name: /Piszkozat: Postaköltség.*Rögzítési határidő lejárt: 2026\.01\.12\./ })).toBeVisible();
+  await expectAccessible(page, "Kezdőlap teendőkkel");
+  await todos.getByRole("link", { name: /Rögzítési határidő: 1 lejárt/ }).click();
+  await expect(page).toHaveURL(/\/konyveles\?allapot=piszkozat$/);
+  await expect(page.getByRole("link", { name: "Piszkozat" })).toHaveCount(2);
+  await page.goBack();
+  await todos.getByRole("link", { name: /Piszkozat: Kifizetés: IR-2026\/0042/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Piszkozat szerkesztése" })).toBeVisible();
+  await expect(page.getByLabel("A gazdasági művelet leírása")).toHaveValue("Kifizetés: IR-2026/0042");
+
+  await page.getByLabel("A gazdasági művelet leírása").press("Control+Enter");
+  await page.getByRole("dialog", { name: "Előnézet – könyvelés előtt" }).getByRole("button", { name: "Könyvelés" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "BANK-2026-00001" })).toBeVisible();
+});
+
+test("bizonylat: sztornó megerősítéssel, kölcsönös hivatkozás, szűrés", async ({ page }) => {
+  await login(page);
+  await page.getByRole("navigation", { name: "Főmenü" }).getByRole("link", { name: "Könyvelés" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Könyvelés" })).toBeVisible();
+  await expectAccessible(page, "Bizonylatlista");
+  await page.getByRole("link", { name: "SZSZ-2026-00001" }).click();
+  await page.getByRole("button", { name: "Sztornózás" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Bizonylat sztornózása" });
+  await expect(confirm).toContainText("nem vonható vissza");
+  await expect(confirm.getByRole("button", { name: "Mégse" })).toBeFocused();
+  await expectAccessible(page, "Sztornó megerősítése");
+  await confirm.getByRole("button", { name: "Sztornózás" }).click();
+  await expect(confirm.getByText("Írja le röviden a sztornó okát.")).toBeVisible();
+  await confirm.getByLabel("A sztornó oka").fill("Téves rögzítés");
+  await confirm.getByRole("button", { name: "Sztornózás" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "SZT-2026-00001" })).toBeVisible();
+  await expect(page.getByText("Ez a bizonylat sztornózza:")).toBeVisible();
+  await page.getByRole("link", { name: "SZSZ-2026-00001" }).click();
+  await expect(page.getByText(/Sztornózva a következővel/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sztornózás" })).toBeHidden();
+
+  await page.goto("/konyveles");
+  await page.getByLabel("Állapot").selectOption("sztornozott");
+  await expect(page.getByRole("link", { name: "SZSZ-2026-00001" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "BANK-2026-00001" })).toBeHidden();
+});
+
 test("mobil nézet: nincs vízszintes görgetés, a menü elérhető", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await login(page);
@@ -271,4 +438,9 @@ test("mobil nézet: nincs vízszintes görgetés, a menü elérhető", async ({ 
   expect(overflow).toBeLessThanOrEqual(0);
   await expect(page.getByRole("button", { name: "Új tétel" })).toBeVisible();
   await expectAccessible(page, "Kezdőlap mobilon");
+  // A rögzítő űrlapon a tételtábla a saját dobozában görög, az oldal nem.
+  await page.goto("/konyveles/uj");
+  await expect(page.getByRole("heading", { level: 1, name: "Új bizonylat" })).toBeVisible();
+  const entryOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(entryOverflow).toBeLessThanOrEqual(0);
 });

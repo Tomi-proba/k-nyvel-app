@@ -9,6 +9,7 @@ import {
 } from "@konyvelo/shared";
 import { diff, writeAudit } from "../../core/audit";
 import { seedDefaultChart } from "../accounts";
+import { seedDefaultTemplates } from "../templates";
 import { hashPassword, requireCompanyPermission, requireUser } from "../../core/auth";
 import { pgConstraint, pgErrorCode, PG_UNIQUE_VIOLATION, type Tx } from "../../core/db";
 import { assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
@@ -112,6 +113,17 @@ export const companiesModule: AppModule = {
             entityType: "account",
             entityId: null,
             after: { count: seeded },
+            ip: request.ip,
+          });
+          // …és a gyakori kontírozások alapértelmezett sablonjaival.
+          const templates = await seedDefaultTemplates(tx, c!.id, user.id);
+          await writeAudit(tx, {
+            companyId: c!.id,
+            userId: user.id,
+            action: "templates.load_default",
+            entityType: "template",
+            entityId: null,
+            after: { count: templates },
             ip: request.ip,
           });
           return c!;

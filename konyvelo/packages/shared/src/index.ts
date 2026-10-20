@@ -3,3 +3,4 @@ export * from "./schemas";
 export * from "./api-types";
 export * from "./audit-labels";
 export * from "./master-data";
+export * from "./documents";

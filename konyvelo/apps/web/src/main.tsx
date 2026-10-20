@@ -8,12 +8,14 @@ import { AppLayout, NEW_ENTRY_PATH } from "./app/AppLayout";
 import { WorkspaceProvider } from "./app/workspace";
 import { ForcedPasswordChangePage, LoginPage, SetupPage } from "./features/auth/AuthPages";
 import { ChartOfAccountsPage } from "./features/accounts/ChartOfAccountsPage";
+import { DocumentPage, DocumentsPage, NewDocumentPage } from "./features/documents/DocumentsPages";
 import { HomePage } from "./features/home/HomePage";
 import { NewPartnerPage, PartnerDetailPage, PartnersPage } from "./features/partners/PartnersPages";
 import { ComingSoon } from "./features/placeholders/ComingSoon";
 import { AuditLogPage } from "./features/settings/AuditLogPage";
 import { FiscalYearsPage } from "./features/settings/FiscalYearsPage";
 import { MembersPage } from "./features/settings/MembersPage";
+import { TemplatesPage } from "./features/settings/TemplatesPage";
 import { CompanySettingsPage, NewCompanyPage, PasswordPage, SettingsLayout } from "./features/settings/SettingsPages";
 import { ApiError, get } from "./lib/api";
 import { Loading, PageHeader } from "./ui/Page";
@@ -80,20 +82,9 @@ function Root() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route index element={<HomePage />} />
-          <Route
-            path="konyveles"
-            element={<ComingSoon title="Könyvelés" step={3} description="Bizonylatok rögzítése és könyvelése, napló, sztornó és helyesbítő tételek, kontírozási sablonok." />}
-          />
-          <Route
-            path={NEW_ENTRY_PATH.slice(1)}
-            element={
-              <ComingSoon
-                title="Új tétel"
-                step={3}
-                description="Itt lesz a gyors, billentyűzetes tételrögzítés: tartozik/követel sorok, számlakereső, folyamatos egyensúly-ellenőrzés, előnézet mentés előtt."
-              />
-            }
-          />
+          <Route path="konyveles" element={<DocumentsPage />} />
+          <Route path={NEW_ENTRY_PATH.slice(1)} element={<NewDocumentPage />} />
+          <Route path="konyveles/:documentId" element={<DocumentPage />} />
           <Route path="partnerek" element={<PartnersPage />} />
           <Route path="partnerek/uj" element={<NewPartnerPage />} />
           <Route path="partnerek/:partnerId" element={<PartnerDetailPage />} />
@@ -104,6 +95,7 @@ function Root() {
             <Route path="ceg" element={<CompanySettingsPage />} />
             <Route path="uzleti-evek" element={<FiscalYearsPage />} />
             <Route path="szamlatukor" element={<ChartOfAccountsPage />} />
+            <Route path="sablonok" element={<TemplatesPage />} />
             <Route path="felhasznalok" element={<MembersPage />} />
             <Route path="naplo" element={<AuditLogPage />} />
             <Route path="jelszo" element={<PasswordPage />} />

@@ -86,3 +86,28 @@ export function defaultReportMapping(number: string): ReportMapping {
   if (!best) return { bsDebit: null, bsCredit: null, isLine: null };
   return { bsDebit: best[1] ?? null, bsCredit: best[2] ?? null, isLine: best[3] ?? null };
 }
+
+/** Melyik kimutatásba kerülhet a számla (Szt. 160. § (2)–(5)). */
+export function reportKind(number: string): "BS" | "IS" | "NONE" {
+  if (!/^\d/.test(number) || number.startsWith("49")) return "NONE";
+  const c = number[0]!;
+  if ("1234".includes(c)) return "BS";
+  if ("589".includes(c)) return "IS";
+  return "NONE";
+}
+
+/** Hiányzik-e a kimutatássor egy könyvelhető, aktív számlánál? */
+export function missingMapping(a: {
+  number: string;
+  isActive: boolean;
+  hasChildren: boolean;
+  bsLineDebit: string | null;
+  bsLineCredit: string | null;
+  isLine: string | null;
+}): boolean {
+  if (!a.isActive || a.hasChildren) return false;
+  const kind = reportKind(a.number);
+  if (kind === "BS") return !a.bsLineDebit || !a.bsLineCredit;
+  if (kind === "IS") return !a.isLine && !a.number.startsWith("59");
+  return false;
+}

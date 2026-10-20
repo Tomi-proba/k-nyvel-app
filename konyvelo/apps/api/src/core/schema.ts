@@ -4,8 +4,8 @@
  * meg; ennek a fájlnak velük összhangban kell maradnia.
  */
 import { sql } from "drizzle-orm";
-import { bigint, bigserial, boolean, char, date, jsonb, pgTable, primaryKey, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import type { AccountNature, NormalSide, Subledger } from "@konyvelo/domain";
+import { bigint, bigserial, boolean, char, date, integer, jsonb, numeric, pgTable, primaryKey, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import type { AccountNature, AmountBase, DocumentType, LineSide, NormalSide, Subledger } from "@konyvelo/domain";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 
@@ -159,6 +159,87 @@ export const partners = pgTable("partners", {
   notes: text("notes"),
   status: text("status").notNull().default("ACTIVE").$type<"ACTIVE" | "INACTIVE" | "ANONYMIZED">(),
   anonymizedAt: ts("anonymized_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+const d = (name: string) => date(name, { mode: "string" });
+
+export const documents = pgTable("documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  fiscalYearId: uuid("fiscal_year_id").notNull(),
+  docType: text("doc_type").notNull().$type<DocumentType>(),
+  status: text("status").notNull().default("DRAFT").$type<"DRAFT" | "POSTED">(),
+  seqNo: integer("seq_no"),
+  serialNumber: text("serial_number"),
+  externalNumber: text("external_number"),
+  partnerId: uuid("partner_id"),
+  description: text("description"),
+  issueDate: d("issue_date"),
+  fulfillmentDate: d("fulfillment_date"),
+  accountingDate: d("accounting_date").notNull(),
+  dueDate: d("due_date"),
+  currency: char("currency", { length: 3 }).notNull().default("HUF"),
+  fxAmount: bigint("fx_amount", { mode: "number" }),
+  fxRate: numeric("fx_rate", { precision: 18, scale: 6, mode: "number" }),
+  fxRateSource: text("fx_rate_source").$type<"MNB" | "ECB" | "BANK" | "VAT_ACT">(),
+  fxRateDate: d("fx_rate_date"),
+  authorizedBy: text("authorized_by"),
+  checkedBy: text("checked_by"),
+  reversesDocumentId: uuid("reverses_document_id"),
+  correctsDocumentId: uuid("corrects_document_id"),
+  affectsFiscalYearId: uuid("affects_fiscal_year_id"),
+  source: text("source").notNull().default("MANUAL"),
+  templateId: uuid("template_id"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  postedAt: ts("posted_at"),
+  postedBy: uuid("posted_by"),
+  contentHash: text("content_hash"),
+  prevHash: text("prev_hash"),
+  retentionUntil: d("retention_until"),
+  archiveStatus: text("archive_status").notNull().default("NONE"),
+  authenticityMethod: text("authenticity_method").notNull().default("NONE"),
+  authenticityRef: text("authenticity_ref"),
+});
+
+export const journalLines = pgTable("journal_lines", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  documentId: uuid("document_id").notNull(),
+  lineNo: smallint("line_no").notNull(),
+  accountId: uuid("account_id"),
+  side: char("side", { length: 1 }).$type<LineSide>(),
+  amount: bigint("amount", { mode: "number" }).notNull().default(0),
+  partnerId: uuid("partner_id"),
+  description: text("description"),
+});
+
+export const documentSequences = pgTable(
+  "document_sequences",
+  {
+    companyId: uuid("company_id").notNull(),
+    fiscalYearId: uuid("fiscal_year_id").notNull(),
+    docType: text("doc_type").notNull(),
+    lastNumber: integer("last_number").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.fiscalYearId, t.docType] })],
+);
+
+export const postingTemplates = pgTable("posting_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  name: text("name").notNull(),
+  shortcut: text("shortcut"),
+  docType: text("doc_type").$type<DocumentType>(),
+  description: text("description"),
+  vatRate: smallint("vat_rate"),
+  partnerId: uuid("partner_id"),
+  lines: jsonb("lines").notNull().$type<Array<{ accountId: string; side: LineSide; base: AmountBase }>>(),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: ts("created_at").notNull().defaultNow(),
   createdBy: uuid("created_by").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),

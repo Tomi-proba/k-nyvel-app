@@ -15,6 +15,15 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "partner.create": "Partner létrehozása",
   "partner.update": "Partner módosítása",
   "partner.delete": "Partner törlése",
+  "document.create": "Bizonylat-piszkozat létrehozása",
+  "document.update": "Bizonylat-piszkozat módosítása",
+  "document.delete": "Bizonylat-piszkozat törlése",
+  "document.post": "Bizonylat könyvelése",
+  "document.reverse": "Bizonylat sztornózása",
+  "templates.load_default": "Alapértelmezett kontírozási sablonok betöltése",
+  "template.create": "Kontírozási sablon létrehozása",
+  "template.update": "Kontírozási sablon módosítása",
+  "template.delete": "Kontírozási sablon törlése",
 };
 
 export function auditActionLabel(action: string): string {

@@ -1,4 +1,4 @@
-import { formatDateHu } from "@konyvelo/domain";
+import { formatDateHu, monthLabelHu } from "@konyvelo/domain";
 
 export { formatDateHu };
 
@@ -17,9 +17,6 @@ export function fiscalYearLabel(fy: { startDate: string; endDate: string }): str
   return `${formatDateHu(fy.startDate)}–${formatDateHu(fy.endDate)}`;
 }
 
-const MONTHS = ["január", "február", "március", "április", "május", "június", "július", "augusztus", "szeptember", "október", "november", "december"];
-
 export function periodLabel(p: { startDate: string; endDate: string }): string {
-  const month = MONTHS[Number(p.startDate.slice(5, 7)) - 1];
-  return `${p.startDate.slice(0, 4)}. ${month}`;
+  return monthLabelHu(p.startDate);
 }

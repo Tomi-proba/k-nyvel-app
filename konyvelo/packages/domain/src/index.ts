@@ -10,3 +10,4 @@ export * from "./default-chart";
 export * from "./bank-account";
 export * from "./report-lines";
 export * from "./report-mapping";
+export * from "./documents";
