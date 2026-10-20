@@ -9,13 +9,15 @@ import { loadSession, SESSION_COOKIE } from "./core/auth";
 import type { Db } from "./core/db";
 import { AppError } from "./core/errors";
 import type { AppModule } from "./core/modules";
+import { accountsModule } from "./modules/accounts";
 import { auditModule } from "./modules/audit";
 import { authModule } from "./modules/auth";
 import { companiesModule } from "./modules/companies";
 import { fiscalYearsModule } from "./modules/fiscal-years";
+import { partnersModule } from "./modules/partners";
 
 /** A bekapcsolt modulok. Új modul felvétele: ide kell beírni. */
-export const MODULES: AppModule[] = [authModule, companiesModule, fiscalYearsModule, auditModule];
+export const MODULES: AppModule[] = [authModule, companiesModule, fiscalYearsModule, accountsModule, partnersModule, auditModule];
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 

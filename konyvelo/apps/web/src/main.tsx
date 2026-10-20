@@ -7,7 +7,9 @@ import type { MeResponse } from "@konyvelo/shared";
 import { AppLayout, NEW_ENTRY_PATH } from "./app/AppLayout";
 import { WorkspaceProvider } from "./app/workspace";
 import { ForcedPasswordChangePage, LoginPage, SetupPage } from "./features/auth/AuthPages";
+import { ChartOfAccountsPage } from "./features/accounts/ChartOfAccountsPage";
 import { HomePage } from "./features/home/HomePage";
+import { NewPartnerPage, PartnerDetailPage, PartnersPage } from "./features/partners/PartnersPages";
 import { ComingSoon } from "./features/placeholders/ComingSoon";
 import { AuditLogPage } from "./features/settings/AuditLogPage";
 import { FiscalYearsPage } from "./features/settings/FiscalYearsPage";
@@ -92,13 +94,16 @@ function Root() {
               />
             }
           />
-          <Route path="partnerek" element={<ComingSoon title="Partnerek" step={2} description="Vevők és szállítók, majd a 4. lépésben a nyitott tételek és a kiegyenlítések." />} />
+          <Route path="partnerek" element={<PartnersPage />} />
+          <Route path="partnerek/uj" element={<NewPartnerPage />} />
+          <Route path="partnerek/:partnerId" element={<PartnerDetailPage />} />
           <Route path="kimutatasok" element={<ComingSoon title="Kimutatások" step={5} description="Naplófőkönyv, főkönyvi kivonat, karton, mérleg és eredménykimutatás, exportokkal." />} />
           <Route path="zaras" element={<ComingSoon title="Zárás" step={6} description="Havi időszakok lezárása, évzárás előnézettel, nyitás." />} />
           <Route path="beallitasok" element={<SettingsLayout />}>
             <Route index element={<Navigate to={me.data.companies.length ? "ceg" : "jelszo"} replace />} />
             <Route path="ceg" element={<CompanySettingsPage />} />
             <Route path="uzleti-evek" element={<FiscalYearsPage />} />
+            <Route path="szamlatukor" element={<ChartOfAccountsPage />} />
             <Route path="felhasznalok" element={<MembersPage />} />
             <Route path="naplo" element={<AuditLogPage />} />
             <Route path="jelszo" element={<PasswordPage />} />

@@ -180,6 +180,83 @@ test("audit napló: bejegyzések és sértetlenség-ellenőrzés", async ({ page
   await expectAccessible(page, "Audit napló");
 });
 
+test("számlatükör: alapértelmezett minta, keresés, új alszámla, szerkesztés", async ({ page }) => {
+  await login(page);
+  await page.goto("/beallitasok/szamlatukor");
+  await expect(page.getByRole("heading", { level: 1, name: "Számlatükör" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Előzetesen felszámított általános forgalmi adó", exact: false }).first()).toBeVisible();
+  await expectAccessible(page, "Számlatükör");
+
+  await page.getByRole("searchbox", { name: "Keresés számra vagy névre" }).fill("38");
+  await expect(page.getByRole("cell", { name: "381", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "454", exact: true })).toBeHidden();
+
+  await page.getByRole("button", { name: "Új számla" }).click();
+  const dialog = page.getByRole("dialog", { name: "Új főkönyvi számla" });
+  await dialog.getByRole("textbox", { name: "Számlaszám" }).fill("3841");
+  await dialog.getByRole("textbox", { name: "Megnevezés" }).fill("OTP forint számla");
+  await expectAccessible(page, "Új számla ablak");
+  await dialog.getByRole("button", { name: "Létrehozás" }).click();
+  await expect(page.getByRole("status").getByText("A(z) 3841 számla létrejött.")).toBeVisible();
+  const row384 = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "384", exact: true }) });
+  await expect(row384).toContainText("Gyűjtő");
+  const row3841 = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "3841", exact: true }) });
+  await expect(row3841).toContainText("Bankszámla");
+
+  // Foglalt számlaszám: érthető hiba
+  await page.getByRole("button", { name: "Új számla" }).click();
+  await dialog.getByRole("textbox", { name: "Számlaszám" }).fill("3841");
+  await dialog.getByRole("textbox", { name: "Megnevezés" }).fill("Másik");
+  await dialog.getByRole("button", { name: "Létrehozás" }).click();
+  await expect(dialog.getByText("A(z) 3841 számlaszám már létezik.")).toBeVisible();
+  await page.keyboard.press("Escape");
+});
+
+test("partnerek: új szállító billentyűzetes számlakeresővel, keresés, inaktiválás", async ({ page }) => {
+  await login(page);
+  await page.getByRole("navigation", { name: "Főmenü" }).getByRole("link", { name: "Partnerek" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Partnerek" })).toBeVisible();
+  await page.getByRole("link", { name: "Új partner" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Új partner" })).toBeVisible();
+
+  await page.getByRole("textbox", { name: "Név", exact: true }).fill("Irodaszer Kft.");
+  const tax = page.getByRole("textbox", { name: "Adószám", exact: true });
+  await tax.fill("12345678-1-11");
+  await tax.blur();
+  await expect(page.getByText(/ellenőrző számjegye hibás/)).toBeVisible();
+  await tax.fill("10537914-4-44");
+  await page.getByRole("textbox", { name: "Bankszámlaszám" }).fill("11773016-11111018");
+
+  // Számlakereső: számra
+  const payable = page.getByRole("combobox", { name: "Szállító számla" });
+  await payable.fill("45");
+  await expect(page.getByRole("option", { name: /454 Szállítók/ })).toBeVisible();
+  await expectAccessible(page, "Számlakereső nyitva");
+  await payable.press("Enter");
+  await expect(payable).toHaveValue("454 – Szállítók");
+  // Számlakereső: névre, ékezet nélkül, nyíllal
+  const expense = page.getByRole("combobox", { name: "Költség- vagy eszközszámla" });
+  await expense.fill("berleti");
+  await expense.press("ArrowDown");
+  await expense.press("Enter");
+  await expect(expense).toHaveValue("522 – Bérleti díjak");
+  await page.getByRole("textbox", { name: "Fizetési határidő (nap)" }).fill("15");
+  await expectAccessible(page, "Partner űrlap");
+  await page.getByRole("textbox", { name: "Név", exact: true }).press("Control+Enter");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Partnerek" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Irodaszer Kft." })).toBeVisible();
+  await page.getByRole("searchbox", { name: "Keresés névre vagy adószámra" }).fill("1053791");
+  await expect(page.getByRole("link", { name: "Irodaszer Kft." })).toBeVisible();
+  await expectAccessible(page, "Partnerlista");
+
+  await page.getByRole("link", { name: "Irodaszer Kft." }).click();
+  await expect(page.getByRole("combobox", { name: "Szállító számla" })).toHaveValue("454 – Szállítók");
+  await page.getByRole("button", { name: "Inaktiválás" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Inaktiválás" }).click();
+  await expect(page.getByRole("status").getByText("A partner inaktív lett.")).toBeVisible();
+});
+
 test("mobil nézet: nincs vízszintes görgetés, a menü elérhető", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await login(page);

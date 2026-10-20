@@ -3,7 +3,9 @@
  * szerkezetét (megkötések, triggerek) a migrations/*.sql fájlok határozzák
  * meg; ennek a fájlnak velük összhangban kell maradnia.
  */
-import { bigint, bigserial, boolean, char, date, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { bigint, bigserial, boolean, char, date, jsonb, pgTable, primaryKey, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import type { AccountNature, NormalSide, Subledger } from "@konyvelo/domain";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 
@@ -112,4 +114,49 @@ export const auditLog = pgTable("audit_log", {
   ip: text("ip"),
   prevHash: text("prev_hash"),
   hash: text("hash").notNull(),
+});
+
+export const accounts = pgTable("accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  number: text("number").notNull(),
+  // Generált oszlop az adatbázisban (a számlaszám első jegye) – csak olvasásra.
+  accountClass: smallint("account_class").generatedAlwaysAs(sql`substr(number, 1, 1)::smallint`),
+  name: text("name").notNull(),
+  nature: text("nature").notNull().$type<AccountNature>(),
+  normalSide: char("normal_side", { length: 1 }).notNull().$type<NormalSide>(),
+  subledger: text("subledger").notNull().default("NONE").$type<Subledger>(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+export const partners = pgTable("partners", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  kind: text("kind").notNull().$type<"CUSTOMER" | "SUPPLIER" | "BOTH">(),
+  name: text("name").notNull(),
+  isPrivatePerson: boolean("is_private_person").notNull().default(false),
+  taxNumber: text("tax_number"),
+  communityVatNumber: text("community_vat_number"),
+  country: char("country", { length: 2 }).notNull().default("HU"),
+  postalCode: text("postal_code"),
+  city: text("city"),
+  addressLine: text("address_line"),
+  bankAccount: text("bank_account"),
+  email: text("email"),
+  phone: text("phone"),
+  paymentTermsDays: smallint("payment_terms_days"),
+  defaultReceivableAccountId: uuid("default_receivable_account_id"),
+  defaultPayableAccountId: uuid("default_payable_account_id"),
+  defaultExpenseAccountId: uuid("default_expense_account_id"),
+  defaultRevenueAccountId: uuid("default_revenue_account_id"),
+  notes: text("notes"),
+  status: text("status").notNull().default("ACTIVE").$type<"ACTIVE" | "INACTIVE" | "ANONYMIZED">(),
+  anonymizedAt: ts("anonymized_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
 });

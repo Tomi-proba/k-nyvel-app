@@ -79,7 +79,7 @@ Jelölés: PK = elsődleges kulcs, FK = idegen kulcs. Minden táblában van `cre
 
 - **users**: id, email (egyedi), name, password_hash (Argon2id), is_active, last_login_at
 - **company_memberships**: user_id, company_id, role
-  - Szerepkörök: **Adminisztrátor** (mindent), **Vezető könyvelő** (könyvel + időszakot zár, zárást kér feloldani), **Könyvelő** (rögzít, könyvel), **Megtekintő** (csak olvas). A zárás feloldása csak Adminisztrátornak, indoklással (K 5.3, K 8.2).
+  - Szerepkörök: **Adminisztrátor** (mindent), **Vezető könyvelő** (könyvel, kezeli a számlatükröt és az üzleti éveket, időszakot zár), **Könyvelő** (rögzít, könyvel, partnereket kezel), **Megtekintő** (csak olvas). A zárás feloldása csak Adminisztrátornak, indoklással (K 5.3, K 8.2).
 - **audit_log**: id (bigserial), company_id, user_id, at, action, entity_type, entity_id, before (jsonb), after (jsonb), ip, prev_hash, hash. A `hash` az előző sor hash-éből és a sor tartalmából számolódik (hash-lánc), így utólagos módosítás kimutatható (K 8.1). Ellenőrző végpont: „napló sértetlenségének ellenőrzése”.
 - **auth_events**: sikeres és sikertelen belépések, kilépések (K 8.3).
 

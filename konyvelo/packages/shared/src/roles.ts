@@ -16,8 +16,8 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   ADMIN: "Mindent megtehet: cégadatok, felhasználók, zárás feloldása, audit napló.",
-  CHIEF_ACCOUNTANT: "Könyvel, kezeli az üzleti éveket, lezárja az időszakokat, látja az audit naplót.",
-  ACCOUNTANT: "Bizonylatokat rögzít és könyvel.",
+  CHIEF_ACCOUNTANT: "Könyvel, kezeli a számlatükröt és az üzleti éveket, lezárja az időszakokat, látja az audit naplót.",
+  ACCOUNTANT: "Bizonylatokat rögzít és könyvel, partnereket kezel.",
   VIEWER: "Csak megtekintheti az adatokat és a kimutatásokat.",
 };
 
@@ -29,14 +29,25 @@ export const PERMISSIONS = [
   "period:close",
   "period:reopen",
   "ledger:post",
+  "accounts:manage",
+  "partners:manage",
   "audit:read",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 const MATRIX: Record<Role, readonly Permission[]> = {
   ADMIN: PERMISSIONS,
-  CHIEF_ACCOUNTANT: ["company:read", "company:update", "fiscalYear:manage", "period:close", "ledger:post", "audit:read"],
-  ACCOUNTANT: ["company:read", "ledger:post"],
+  CHIEF_ACCOUNTANT: [
+    "company:read",
+    "company:update",
+    "fiscalYear:manage",
+    "period:close",
+    "ledger:post",
+    "accounts:manage",
+    "partners:manage",
+    "audit:read",
+  ],
+  ACCOUNTANT: ["company:read", "ledger:post", "partners:manage"],
   VIEWER: ["company:read"],
 };
 

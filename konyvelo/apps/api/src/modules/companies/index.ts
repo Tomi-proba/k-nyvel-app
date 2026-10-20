@@ -8,6 +8,7 @@ import {
   type MemberDto,
 } from "@konyvelo/shared";
 import { diff, writeAudit } from "../../core/audit";
+import { seedDefaultChart } from "../accounts";
 import { hashPassword, requireCompanyPermission, requireUser } from "../../core/auth";
 import { pgConstraint, pgErrorCode, PG_UNIQUE_VIOLATION, type Tx } from "../../core/db";
 import { assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
@@ -100,6 +101,17 @@ export const companiesModule: AppModule = {
             entityType: "membership",
             entityId: user.id,
             after: { email: user.email, role: "ADMIN" },
+            ip: request.ip,
+          });
+          // Új cég az alapértelmezett számlatükörrel indul (később szabadon módosítható).
+          const seeded = await seedDefaultChart(tx, c!.id, user.id);
+          await writeAudit(tx, {
+            companyId: c!.id,
+            userId: user.id,
+            action: "accounts.load_default",
+            entityType: "account",
+            entityId: null,
+            after: { count: seeded },
             ip: request.ip,
           });
           return c!;

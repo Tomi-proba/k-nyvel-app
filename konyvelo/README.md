@@ -11,7 +11,7 @@ Magyar nyelvű, kettős könyvvitelt vezető webalkalmazás. A követelmények a
 | Lépés | Tartalom | Állapot |
 |---|---|---|
 | 1. Alapok | projektváz, adatbázis, belépés, jogosultság, audit napló, cégek, üzleti évek | ✅ kész |
-| 2. Számlatükör, partnerek | | ⏳ |
+| 2. Számlatükör, partnerek | alapértelmezett számlatükör, szerkesztő, számlakereső, partnerek | 🔶 a mérleg- és eredménykimutatás-sorok hozzárendelése az Szt. 1–2. mellékletére vár |
 | 3. Bizonylatok és tételek | | ⏳ |
 | 4. Analitika, bank, pénztár | | ⏳ |
 | 5. Kimutatások | | ⏳ |

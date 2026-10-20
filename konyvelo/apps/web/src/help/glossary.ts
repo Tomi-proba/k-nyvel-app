@@ -51,6 +51,34 @@ export const GLOSSARY = {
     title: "Kezdő jelszó",
     text: "Új felhasználónál Ön adja meg a kezdő jelszót, és biztonságos úton közli vele. Első belépéskor a rendszer kéri a jelszó cseréjét.",
   },
+  szamlatukor: {
+    title: "Számlatükör",
+    text: "A cég főkönyvi számláinak jegyzéke az egységes számlakeret 0–9. számlaosztálya szerint. Az új cég egy alapértelmezett mintával indul, amelyet a cég számlarendje szerint szabadon módosíthat (Szt. 161. §).",
+  },
+  gyujtoszamla: {
+    title: "Gyűjtőszámla",
+    text: "Olyan számla, amelynek alszámlái vannak (pl. a 38 Pénzeszközök). Gyűjtőszámlára nem lehet könyvelni, csak a legalsó szintű alszámlákra.",
+  },
+  analitika: {
+    title: "Analitika",
+    text: "Részletező nyilvántartás egy főkönyvi számlához: vevőknél és szállítóknál partnerenként és számlánként (nyitott tételek), banknál bankszámlánként, pénztárnál pénztáranként. Év végén egyeztetni kell a főkönyvvel (Szt. 69. § (2)).",
+  },
+  szokasosEgyenleg: {
+    title: "Szokásos egyenleg",
+    text: "Melyik oldalon szokott egyenlege lenni a számlának: eszközök és költségek tartozik, források és bevételek követel oldalon. Az értékcsökkenést és értékvesztést gyűjtő eszköz-ellenszámlák követel egyenlegűek.",
+  },
+  szamlaJelleg: {
+    title: "Számla jellege",
+    text: "Meghatározza, hová kerül a számla a kimutatásokban: eszköz és forrás a mérlegbe, költség és bevétel az eredménykimutatásba. A nyilvántartási (0.) és az évnyitó/évzáró (49.) számlák egyikbe sem.",
+  },
+  alapertelmezettKontirozas: {
+    title: "Alapértelmezett kontírozás",
+    text: "A partner tételeinek rögzítésekor ezeket a számlákat javasolja a rendszer (pl. a szállítónál 454 Szállítók és a szokásos költségszámla). Rögzítéskor bármikor módosíthatók.",
+  },
+  maganszemely: {
+    title: "Magánszemély partner",
+    text: "Magánszemélynél csak a könyveléshez szükséges adatokat tároljuk (adattakarékosság, GDPR 5. cikk (1) c)); adószámot nem. A megőrzési idő alatt az adatai nem törölhetők.",
+  },
 } as const;
 
 export type GlossaryKey = keyof typeof GLOSSARY;

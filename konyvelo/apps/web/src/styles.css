@@ -606,3 +606,80 @@ kbd {
 details > summary {
   cursor: pointer;
 }
+
+/* ---------- Számlakereső (combobox) ---------- */
+
+.combobox {
+  position: relative;
+}
+.combobox input {
+  width: 100%;
+}
+.combobox-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 40;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+}
+.combobox-list li {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.combobox-list li.is-active {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.combobox-empty {
+  color: var(--muted);
+  cursor: default;
+}
+
+/* ---------- Számlatükör ---------- */
+
+.account-row-class td {
+  font-weight: 700;
+  background: var(--surface);
+}
+.account-row-group td:nth-child(2) {
+  font-weight: 600;
+}
+.account-row-inactive td {
+  color: var(--muted);
+}
+.toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+.toolbar .field {
+  min-width: 220px;
+}
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+.checkbox-row input {
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+}
+tr.clickable {
+  cursor: pointer;
+}
+tr.clickable:hover td {
+  background: var(--surface);
+}
