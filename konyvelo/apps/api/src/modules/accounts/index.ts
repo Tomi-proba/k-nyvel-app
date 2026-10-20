@@ -25,12 +25,27 @@ export async function listAccounts(db: Executor, companyId: string): Promise<Acc
     level: a.level,
     hasChildren: a.hasChildren,
     parentNumber: a.parentNumber,
+    bsLineDebit: a.bsLineDebit,
+    bsLineCredit: a.bsLineCredit,
+    isLine: a.isLine,
   }));
 }
 
 /** Az alapértelmezett számlatükör bemásolása a céghez (cég létrehozásakor vagy kérésre). */
 export async function seedDefaultChart(tx: Tx, companyId: string, userId: string): Promise<number> {
-  const rows = DEFAULT_CHART.map((a) => ({ companyId, createdBy: userId, ...a }));
+  const rows = DEFAULT_CHART.map((a) => ({
+    companyId,
+    createdBy: userId,
+    number: a.number,
+    name: a.name,
+    nature: a.nature,
+    normalSide: a.normalSide,
+    subledger: a.subledger,
+    description: a.description,
+    bsLineDebit: a.bsDebit,
+    bsLineCredit: a.bsCredit,
+    isLine: a.isLine,
+  }));
   await tx.insert(accounts).values(rows);
   return rows.length;
 }
@@ -44,6 +59,9 @@ function auditable(a: AccountRow) {
     subledger: a.subledger,
     description: a.description,
     isActive: a.isActive,
+    bsLineDebit: a.bsLineDebit,
+    bsLineCredit: a.bsLineCredit,
+    isLine: a.isLine,
   };
 }
 
@@ -102,13 +120,21 @@ export const accountsModule: AppModule = {
         .transaction(async (tx) => {
           await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"accounts:" + companyId}, 0))`);
           const existing = await tx
-            .select({ number: accounts.number, nature: accounts.nature, normalSide: accounts.normalSide, subledger: accounts.subledger })
+            .select({
+              number: accounts.number,
+              nature: accounts.nature,
+              normalSide: accounts.normalSide,
+              subledger: accounts.subledger,
+              bsLineDebit: accounts.bsLineDebit,
+              bsLineCredit: accounts.bsLineCredit,
+              isLine: accounts.isLine,
+            })
             .from(accounts)
             .where(eq(accounts.companyId, companyId));
           if (existing.some((a) => a.number === input.number)) {
             throw validationError({ number: `A(z) ${input.number} számlaszám már létezik.` });
           }
-          // Alapértelmezés: a szülőszámla jellege és analitikája, ennek hiányában a számlaosztályé.
+          // Alapértelmezés: a szülőszámla jellege, analitikája és kimutatássora, ennek hiányában a számlaosztályé.
           const parentNumber = findParentNumber(input.number, existing.map((a) => a.number));
           const parent = existing.find((a) => a.number === parentNumber);
           const classDefaults = defaultsForClass(accountClass(input.number));
@@ -122,6 +148,9 @@ export const accountsModule: AppModule = {
               normalSide: input.normalSide ?? parent?.normalSide ?? classDefaults.normalSide,
               subledger: input.subledger ?? parent?.subledger ?? "NONE",
               description: input.description ?? null,
+              bsLineDebit: input.bsLineDebit !== undefined ? input.bsLineDebit : (parent?.bsLineDebit ?? null),
+              bsLineCredit: input.bsLineCredit !== undefined ? input.bsLineCredit : (parent?.bsLineCredit ?? null),
+              isLine: input.isLine !== undefined ? input.isLine : (parent?.isLine ?? null),
               createdBy: user.id,
             })
             .returning();

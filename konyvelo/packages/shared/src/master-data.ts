@@ -1,5 +1,16 @@
 import { z } from "zod";
-import { ACCOUNT_NATURES, SUBLEDGERS, validateAccountNumber, validateBankAccount, validateTaxNumber, type AccountNature, type NormalSide, type Subledger } from "@konyvelo/domain";
+import {
+  ACCOUNT_NATURES,
+  isBalanceSheetLine,
+  isIncomeStatementLine,
+  SUBLEDGERS,
+  validateAccountNumber,
+  validateBankAccount,
+  validateTaxNumber,
+  type AccountNature,
+  type NormalSide,
+  type Subledger,
+} from "@konyvelo/domain";
 
 /** Számlatükör és partnerek: bemeneti sémák és API-típusok. */
 
@@ -21,6 +32,19 @@ const optionalText = (label: string, max: number) =>
 
 // ---------- Számlatükör ----------
 
+const bsLine = z
+  .union([z.string(), z.null()])
+  .transform((v) => (v === "" ? null : v))
+  .refine((v) => v === null || isBalanceSheetLine(v), "Ismeretlen mérlegsor.")
+  .optional();
+const isLine = z
+  .union([z.string(), z.null()])
+  .transform((v) => (v === "" ? null : v))
+  .refine((v) => v === null || isIncomeStatementLine(v), "Ismeretlen eredménykimutatás-sor.")
+  .optional();
+
+const mappingFields = { bsLineDebit: bsLine, bsLineCredit: bsLine, isLine };
+
 export const accountCreateSchema = z.object({
   number: z
     .string({ error: "Számlaszám: kötelező mező." })
@@ -34,6 +58,7 @@ export const accountCreateSchema = z.object({
   normalSide: z.enum(["D", "C"], { error: "Válassza ki a szokásos egyenleg oldalát." }).optional(),
   subledger: z.enum(SUBLEDGERS as [Subledger, ...Subledger[]], { error: "Válasszon analitikát." }).optional(),
   description: optionalText("Leírás", 1000),
+  ...mappingFields,
 });
 export type AccountCreateInput = z.infer<typeof accountCreateSchema>;
 
@@ -45,6 +70,7 @@ export const accountUpdateSchema = z.object({
   subledger: z.enum(SUBLEDGERS as [Subledger, ...Subledger[]]).optional(),
   description: optionalText("Leírás", 1000),
   isActive: z.boolean().optional(),
+  ...mappingFields,
 });
 export type AccountUpdateInput = z.infer<typeof accountUpdateSchema>;
 
@@ -63,6 +89,11 @@ export type AccountDto = {
   /** Van-e alszámlája – gyűjtőszámlára nem lehet könyvelni. */
   hasChildren: boolean;
   parentNumber: string | null;
+  /** Mérlegsor tartozik, illetve követel egyenlegnél (Szt. 1. számú melléklet, „A” változat). */
+  bsLineDebit: string | null;
+  bsLineCredit: string | null;
+  /** Eredménykimutatás-sor (Szt. 2. számú melléklet, összköltség-eljárás). */
+  isLine: string | null;
 };
 
 // ---------- Partnerek ----------

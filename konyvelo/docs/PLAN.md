@@ -91,8 +91,8 @@ Jelölés: PK = elsődleges kulcs, FK = idegen kulcs. Minden táblában van `cre
 
 ### 4.3 Számlatükör
 
-- **accounts**: number (pl. `3811`), name, class (0–9, a számból), parent_id, is_postable (csak a legalsó szinten lehet könyvelni), nature (`ASSET` | `EQUITY_LIABILITY` | `EXPENSE` | `REVENUE` | `OFF_BALANCE` | `COST_CENTER`), subledger (`NONE` | `CUSTOMER` | `SUPPLIER` | `BANK` | `CASH`), balance_sheet_line, income_statement_line, description (súgószöveg: „mit könyvelünk ide”), is_active. Egyedi: (company_id, number).
-- **report_lines**: a mérleg „A” változatának és az összköltséges eredménykimutatásnak a sorai (kód, megnevezés, szülő sor, sorrend, előjel). Ezeket a hiányzó 1. és 2. melléklet bemásolása után véglegesítem; addig a szerkezetet a 96. § szerinti nagybetűs és római számos szinten készítem elő.
+- **accounts**: number (pl. `3811`), name, class (0–9, a számból), parent_id, is_postable (csak a legalsó szinten lehet könyvelni), nature (`ASSET` | `EQUITY_LIABILITY` | `EXPENSE` | `REVENUE` | `OFF_BALANCE` | `COST_CENTER`), subledger (`NONE` | `CUSTOMER` | `SUPPLIER` | `BANK` | `CASH`), bs_line_debit és bs_line_credit (mérlegsor tartozik, illetve követel egyenlegnél – pl. 311 Vevők: B.II.1, ha túlfizetés miatt követel egyenlegű: F.III.9), is_line (eredménykimutatás-sor), description (súgószöveg: „mit könyvelünk ide”), is_active. Egyedi: (company_id, number).
+- **Kimutatássorok** (nem adatbázistábla, hanem kód: `packages/domain/src/report-lines.ts`): a mérleg „A” változatának (Szt. 1. melléklet) és az összköltséges eredménykimutatásnak (2. melléklet) a sorai kóddal, szöveggel, szinttel; az egyszerűsített beszámoló a nagybetűs és római számos szintet használja (96. §). Az eredménykimutatás képletsorai (A–D) a sorokból számolódnak. Az alapértelmezett hozzárendelés: `report-mapping.ts`.
 - **Alapértelmezett számlatükör**: induló csomag (seed) az egységes számlakeret 0–9. osztálya szerint, kb. 250 számlával, előre beállított analitikával (pl. 311 Vevők → `CUSTOMER`, 454 Szállítók → `SUPPLIER`, 384 Bank → `BANK`, 381 Pénztár → `CASH`, 466/467/468 áfa) és sor-hozzárendeléssel. Cégenként másolatként jön létre, utána szabadon testreszabható; könyvelt számla nem törölhető, csak inaktiválható.
 - A zárási számlák (491 Nyitómérleg, 492 Zárómérleg, 493 Adózott eredmény elszámolása, 419 Mérleg szerinti eredmény, 413 Eredménytartalék) cégszinten beállíthatók. Ez szakmai gyakorlat, nem jogszabályi előírás (❓), ezért nem építem be fixen.
 
@@ -233,7 +233,7 @@ A fejlécben mindig látszik: a választott cég és üzleti év, valamint egy k
 7. **NAV Online Számla import.**
 8. **Mentés, cégexport**, végső akadálymentességi és teljes körű tesztek, felhasználói súgó.
 
-A 150–169. § és az 1–2. melléklet bemásolása után a `REQUIREMENTS.md` ⚠️ pontjait véglegesítem; ha valami eltér a fenti feltételezésektől (pl. bizonylatkellékek, mérlegsorok), azt a megfelelő lépésnél jelzem és javítom.
+A 150–169. § és az 1–2. melléklet hatályos szövege alapján a `REQUIREMENTS.md` 3. változata elkészült. A bizonylat adatmodellje (3. lépés) a 167. § (1) a)–j) kellékeit követi; a könyvelés dátumára a 165. § (3) szerinti határidő-figyelmeztetés kerül.
 
 ## 9. Döntések (2026.10.20.)
 

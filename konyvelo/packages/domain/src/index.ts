@@ -8,3 +8,5 @@ export * from "./canonical-json";
 export * from "./accounts";
 export * from "./default-chart";
 export * from "./bank-account";
+export * from "./report-lines";
+export * from "./report-mapping";

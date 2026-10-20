@@ -11,7 +11,7 @@ Magyar nyelvű, kettős könyvvitelt vezető webalkalmazás. A követelmények a
 | Lépés | Tartalom | Állapot |
 |---|---|---|
 | 1. Alapok | projektváz, adatbázis, belépés, jogosultság, audit napló, cégek, üzleti évek | ✅ kész |
-| 2. Számlatükör, partnerek | alapértelmezett számlatükör, szerkesztő, számlakereső, partnerek | 🔶 a mérleg- és eredménykimutatás-sorok hozzárendelése az Szt. 1–2. mellékletére vár |
+| 2. Számlatükör, partnerek | alapértelmezett számlatükör, szerkesztő, számlakereső, partnerek | ✅ kész (mérleg- és eredménykimutatás-sor hozzárendeléssel az Szt. 1–2. melléklete szerint) |
 | 3. Bizonylatok és tételek | | ⏳ |
 | 4. Analitika, bank, pénztár | | ⏳ |
 | 5. Kimutatások | | ⏳ |
@@ -22,7 +22,7 @@ Magyar nyelvű, kettős könyvvitelt vezető webalkalmazás. A követelmények a
 ## Felépítés
 
 ```
-packages/domain   tiszta könyvelési logika (dátum, Ft, adószám, üzleti év, audit-lánc) – tesztek
+packages/domain   tiszta könyvelési logika (dátum, Ft, adószám, üzleti év, audit-lánc, számlatükör, kimutatássorok) – tesztek
 packages/shared   közös sémák (Zod) magyar hibaüzenetekkel, szerepkörök, API-típusok
 apps/api          Fastify + Drizzle + PostgreSQL szerver, SQL-migrációk, integrációs tesztek
 apps/web          React + Vite felület

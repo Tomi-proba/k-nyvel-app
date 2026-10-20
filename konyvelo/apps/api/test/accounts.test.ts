@@ -23,7 +23,19 @@ describe("számlatükör", () => {
     const by = Object.fromEntries(accounts.map((a) => [a.number, a]));
     expect(by["38"]).toMatchObject({ level: 1, hasChildren: true });
     expect(by["384"]).toMatchObject({ level: 2, hasChildren: false, subledger: "BANK" });
-    expect(by["466"]).toMatchObject({ name: "Előzetesen felszámított általános forgalmi adó" });
+    expect(by["466"]).toMatchObject({ name: "Előzetesen felszámított általános forgalmi adó", bsLineDebit: "B.II.6", bsLineCredit: "F.III.9" });
+    expect(by["522"]).toMatchObject({ isLine: "IV.06", bsLineDebit: null });
+  });
+
+  it("kimutatássor: alszámla örökli, módosítható, hibás kód elutasítva", async () => {
+    const c = await createCompany(admin);
+    const created = (await admin.post(`/api/companies/${c.id}/accounts`, { number: "5221", name: "Irodabérlet" })).json();
+    expect(created).toMatchObject({ isLine: "IV.06" });
+    const upd = await admin.patch(`/api/companies/${c.id}/accounts/${created.id}`, { isLine: "IV.07" });
+    expect(upd.json()).toMatchObject({ isLine: "IV.07" });
+    const bad = await admin.patch(`/api/companies/${c.id}/accounts/${created.id}`, { isLine: "XYZ", bsLineDebit: "Q.1" });
+    expect(bad.statusCode).toBe(422);
+    expect(bad.json().error.fields).toMatchObject({ isLine: "Ismeretlen eredménykimutatás-sor.", bsLineDebit: "Ismeretlen mérlegsor." });
   });
 
   it("alszámla: jelleg és analitika a szülőtől öröklődik, a szülő gyűjtőszámla lesz", async () => {

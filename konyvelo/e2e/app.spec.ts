@@ -202,6 +202,13 @@ test("számlatükör: alapértelmezett minta, keresés, új alszámla, szerkeszt
   await expect(row384).toContainText("Gyűjtő");
   const row3841 = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "3841", exact: true }) });
   await expect(row3841).toContainText("Bankszámla");
+  // A kimutatássor a szülőtől öröklődik (mérleg B.IV.2, követel egyenlegnél F.III.2).
+  await expect(row3841).toContainText("B.IV.2 / F.III.2");
+  await row3841.getByRole("button", { name: /Szerkesztés/ }).click();
+  const edit = page.getByRole("dialog", { name: "3841 számla szerkesztése" });
+  await expect(edit.getByRole("combobox", { name: "Mérlegsor tartozik egyenlegnél" })).toHaveValue("B.IV.2");
+  await expectAccessible(page, "Számla szerkesztése");
+  await page.keyboard.press("Escape");
 
   // Foglalt számlaszám: érthető hiba
   await page.getByRole("button", { name: "Új számla" }).click();

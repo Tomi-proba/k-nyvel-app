@@ -1,4 +1,5 @@
 import { accountClass, defaultsForClass, type AccountNature, type NormalSide, type Subledger } from "./accounts";
+import { defaultReportMapping, type ReportMapping } from "./report-mapping";
 
 /**
  * Alapértelmezett számlatükör (minta).
@@ -12,7 +13,7 @@ import { accountClass, defaultsForClass, type AccountNature, type NormalSide, ty
  * Az áfa csak főkönyvi számla (466, 467, 468); áfa-analitika nincs.
  */
 
-export type ChartEntry = {
+export type ChartEntry = ReportMapping & {
   number: string;
   name: string;
   nature: AccountNature;
@@ -319,5 +320,6 @@ export const DEFAULT_CHART: readonly ChartEntry[] = ROWS.map(([number, name, opt
     normalSide: opt.side ?? (opt.nature === "CLOSING" ? "D" : d.normalSide),
     subledger: opt.sub ?? "NONE",
     description: opt.desc ?? null,
+    ...defaultReportMapping(number),
   };
 });

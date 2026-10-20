@@ -75,6 +75,10 @@ export const GLOSSARY = {
     title: "Alapértelmezett kontírozás",
     text: "A partner tételeinek rögzítésekor ezeket a számlákat javasolja a rendszer (pl. a szállítónál 454 Szállítók és a szokásos költségszámla). Rögzítéskor bármikor módosíthatók.",
   },
+  kimutatasSor: {
+    title: "Kimutatássor",
+    text: "Hová kerül a számla egyenlege a beszámolóban: a mérleg „A” változatának (Szt. 1. számú melléklet), illetve az összköltséges eredménykimutatásnak (Szt. 2. számú melléklet) melyik sorába. A mérlegsor függhet az egyenleg oldalától (pl. bankszámla követel egyenlege = rövid lejáratú hitel).",
+  },
   maganszemely: {
     title: "Magánszemély partner",
     text: "Magánszemélynél csak a könyveléshez szükséges adatokat tároljuk (adattakarékosság, GDPR 5. cikk (1) c)); adószámot nem. A megőrzési idő alatt az adatai nem törölhetők.",

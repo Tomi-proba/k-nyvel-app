@@ -2,6 +2,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useMemo, useState } from "react";
 import {
+  BALANCE_SHEET_LINES,
+  INCOME_STATEMENT_LINES,
   ACCOUNT_NATURE_LABELS,
   ACCOUNT_NATURES,
   NORMAL_SIDE_LABELS,
@@ -31,7 +33,35 @@ type FormValues = {
   subledger: Subledger | "";
   description: string;
   isActive: boolean;
+  bsLineDebit: string;
+  bsLineCredit: string;
+  isLine: string;
 };
+
+/** Melyik kimutatásba kerülhet a számla (Szt. 160. § (2)–(5)). */
+function reportKind(number: string): "BS" | "IS" | "NONE" {
+  if (!/^\d/.test(number) || number.startsWith("49")) return "NONE";
+  const c = number[0]!;
+  if ("1234".includes(c)) return "BS";
+  if ("589".includes(c)) return "IS";
+  return "NONE";
+}
+
+const lineOptionLabel = (l: { code: string; label: string; ofWhich?: boolean }) => {
+  const depth = l.code.split(".").length - 1;
+  return `${"\u00a0\u00a0".repeat(depth)}${l.code} ${l.label}`;
+};
+const BS_OPTIONS = BALANCE_SHEET_LINES;
+const IS_OPTIONS = INCOME_STATEMENT_LINES.filter((l) => !l.formula);
+
+/** Hiányzik-e a kimutatássor egy könyvelhető, aktív számlánál? */
+export function missingMapping(a: AccountDto): boolean {
+  if (!a.isActive || a.hasChildren) return false;
+  const kind = reportKind(a.number);
+  if (kind === "BS") return !a.bsLineDebit || !a.bsLineCredit;
+  if (kind === "IS") return !a.isLine && !a.number.startsWith("59");
+  return false;
+}
 
 /** Új számla, illetve meglévő szerkesztése párbeszédablakban. */
 function AccountDialog({
@@ -56,6 +86,9 @@ function AccountDialog({
     subledger: account?.subledger ?? "",
     description: account?.description ?? "",
     isActive: account?.isActive ?? true,
+    bsLineDebit: account?.bsLineDebit ?? "",
+    bsLineCredit: account?.bsLineCredit ?? "",
+    isLine: account?.isLine ?? "",
   };
   const toPayload = (v: FormValues) => {
     const base = {
@@ -64,6 +97,10 @@ function AccountDialog({
       ...(v.nature ? { nature: v.nature } : {}),
       ...(v.normalSide ? { normalSide: v.normalSide } : {}),
       ...(v.subledger ? { subledger: v.subledger } : {}),
+      // Új számlánál az üres mező öröklést jelent (a szülőtől), szerkesztésnél törlést.
+      ...(editing || v.bsLineDebit ? { bsLineDebit: v.bsLineDebit || null } : {}),
+      ...(editing || v.bsLineCredit ? { bsLineCredit: v.bsLineCredit || null } : {}),
+      ...(editing || v.isLine ? { isLine: v.isLine || null } : {}),
     };
     return editing ? { ...base, isActive: v.isActive } : { ...base, number: v.number };
   };
@@ -157,6 +194,48 @@ function AccountDialog({
                 )}
               </Field>
             </div>
+            {reportKind(form.values.number) === "BS" && (
+              <div className="form-row">
+                <Field label="Mérlegsor tartozik egyenlegnél" error={form.errors.bsLineDebit} help="kimutatasSor">
+                  {(p) => (
+                    <select {...p} value={form.values.bsLineDebit} onChange={(e) => form.set("bsLineDebit", e.target.value)}>
+                      <option value="">{editing ? "Nincs hozzárendelve" : "Öröklés a szülőszámlától"}</option>
+                      {BS_OPTIONS.map((l) => (
+                        <option key={l.code} value={l.code}>
+                          {lineOptionLabel(l)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+                <Field label="Mérlegsor követel egyenlegnél" error={form.errors.bsLineCredit}>
+                  {(p) => (
+                    <select {...p} value={form.values.bsLineCredit} onChange={(e) => form.set("bsLineCredit", e.target.value)}>
+                      <option value="">{editing ? "Nincs hozzárendelve" : "Öröklés a szülőszámlától"}</option>
+                      {BS_OPTIONS.map((l) => (
+                        <option key={l.code} value={l.code}>
+                          {lineOptionLabel(l)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+              </div>
+            )}
+            {reportKind(form.values.number) === "IS" && (
+              <Field label="Eredménykimutatás-sor" error={form.errors.isLine} help="kimutatasSor">
+                {(p) => (
+                  <select {...p} value={form.values.isLine} onChange={(e) => form.set("isLine", e.target.value)}>
+                    <option value="">{editing ? "Nincs hozzárendelve" : "Öröklés a szülőszámlától"}</option>
+                    {IS_OPTIONS.map((l) => (
+                      <option key={l.code} value={l.code}>
+                        {lineOptionLabel(l)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+            )}
             <Field label="Leírás (mit könyvelünk ide)" error={form.errors.description} hint="A rögzítéskor súgóként jelenik meg.">
               {(p) => <textarea {...p} rows={3} value={form.values.description} onChange={(e) => form.set("description", e.target.value)} />}
             </Field>
@@ -204,6 +283,8 @@ export function ChartOfAccountsPage() {
     const all = (q.data ?? []).filter((a) => showInactive || a.isActive);
     return deferredSearch.trim() ? searchAccounts(all, deferredSearch, 500) : all;
   }, [q.data, deferredSearch, showInactive]);
+
+  const unmapped = useMemo(() => (q.data ?? []).filter(missingMapping), [q.data]);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: accountsKey(companyId) });
 
@@ -253,6 +334,13 @@ export function ChartOfAccountsPage() {
 
       {q.data && q.data.length > 0 && (
         <>
+          {unmapped.length > 0 && (
+            <div className="alert alert-info" role="status">
+              <strong>{unmapped.length} könyvelhető számla nincs kimutatássorhoz rendelve</strong>, ezért nem jelenne meg a mérlegben, illetve az
+              eredménykimutatásban: {unmapped.slice(0, 8).map((a) => a.number).join(", ")}
+              {unmapped.length > 8 ? "…" : ""}. A Szerkesztés gombbal pótolható.
+            </div>
+          )}
           <div className="toolbar" role="search">
             <Field label="Keresés számra vagy névre" hint="Pl. 38 vagy „szállító”">
               {(p) => <input {...p} type="search" value={search} onChange={(e) => setSearch(e.target.value)} />}
@@ -279,6 +367,11 @@ export function ChartOfAccountsPage() {
                     </span>
                   </th>
                   <th scope="col">Egyenleg</th>
+                  <th scope="col">
+                    <span className="row">
+                      Kimutatássor <HelpTip term="kimutatasSor" />
+                    </span>
+                  </th>
                   <th scope="col">Állapot</th>
                   {canManage && (
                     <th scope="col">
@@ -302,6 +395,10 @@ export function ChartOfAccountsPage() {
                     </td>
                     <td>{a.subledger === "NONE" ? "" : SUBLEDGER_LABELS[a.subledger]}</td>
                     <td>{NORMAL_SIDE_LABELS[a.normalSide]}</td>
+                    <td className="mono">
+                      {a.isLine ?? (a.bsLineDebit === a.bsLineCredit ? a.bsLineDebit : [a.bsLineDebit, a.bsLineCredit].filter(Boolean).join(" / "))}
+                      {missingMapping(a) && <span className="badge badge-warning">Hiányzik</span>}
+                    </td>
                     <td>
                       {!a.isActive ? (
                         <span className="badge">Inaktív</span>
