@@ -261,6 +261,33 @@ describe("sztornó és helyesbítés", () => {
     expect(reversed.items.find((i: { id: string }) => i.id === orig.id).reversed).toBe(true);
   });
 
+  it("negatív előjeles sztornó, ha a cég így állítja be; máshol negatív összeg nem könyvelhető", async () => {
+    expect((await admin.patch(`/api/companies/${companyId}`, { reversalMethod: "NEGATIVE" })).json().reversalMethod).toBe("NEGATIVE");
+    try {
+      const orig = (await admin.post(url(), { ...supplierInvoice({ externalNumber: "PIROS-1" }), post: true })).json();
+      const s = (await admin.post(url(`/${orig.id}/reverse`), { accountingDate: "2026-04-02", reason: "Téves rögzítés" })).json();
+      expect(s.status).toBe("POSTED");
+      expect(s.lines.map((l: { accountNumber: string; side: string; amount: number }) => [l.accountNumber, l.side, l.amount])).toEqual([
+        ["529", "D", -ft(10000)],
+        ["466", "D", -ft(2700)],
+        ["454", "C", -ft(12700)],
+      ]);
+      expect(s).toMatchObject({ totalDebit: -ft(12700), totalCredit: -ft(12700) });
+      // Normál bizonylaton negatív összeg nem könyvelhető (sem az API-n, sem közvetlenül az adatbázisban).
+      expect((await admin.post(url(), supplierInvoice({ lines: [{ accountId: acc["529"], side: "D", amount: -100 }] }))).statusCode).toBe(422);
+      const draft = (await admin.post(url(), supplierInvoice({ externalNumber: "NEG-DB" }))).json();
+      await appQuery("UPDATE journal_lines SET amount = -amount WHERE document_id = $1", [draft.id]);
+      await expect(
+        appQuery(
+          "UPDATE documents SET status = 'POSTED', seq_no = 998, serial_number = 'Y', posted_at = now(), posted_by = created_by, content_hash = 'y' WHERE id = $1",
+          [draft.id],
+        ),
+      ).rejects.toThrow(/pozitív összeg/);
+    } finally {
+      await admin.patch(`/api/companies/${companyId}`, { reversalMethod: "SWAP" });
+    }
+  });
+
   it("piszkozat nem sztornózható; az ok kötelező", async () => {
     const draft = (await admin.post(url(), supplierInvoice())).json();
     expect((await admin.post(url(`/${draft.id}/reverse`), { accountingDate: "2026-04-02", reason: "Hiba" })).statusCode).toBe(409);

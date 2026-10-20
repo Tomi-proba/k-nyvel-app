@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isValidIsoDate, validateTaxNumber } from "@konyvelo/domain";
+import { isValidIsoDate, REVERSAL_METHODS, validateTaxNumber, type ReversalMethod } from "@konyvelo/domain";
 import { ROLES } from "./roles";
 
 /**
@@ -122,9 +122,10 @@ const companyFields = {
     .nullable()
     .optional(),
   fxRateSource: z.enum(FX_RATE_SOURCES, { error: "Válasszon árfolyamforrást." }),
+  reversalMethod: z.enum(REVERSAL_METHODS as [ReversalMethod, ...ReversalMethod[]], { error: "Válassza ki a sztornó módját." }),
 };
 
-export const companyCreateSchema = z.object(companyFields);
+export const companyCreateSchema = z.object({ ...companyFields, reversalMethod: companyFields.reversalMethod.default("SWAP") });
 export type CompanyCreateInput = z.infer<typeof companyCreateSchema>;
 
 export const companyUpdateSchema = z.object(companyFields).partial();

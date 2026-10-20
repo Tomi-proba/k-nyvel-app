@@ -1,11 +1,12 @@
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { DOCUMENT_TYPES, formatHuf } from "@konyvelo/domain";
-import { FX_RATE_SOURCE_LABELS, type DocumentDto, type DocumentRef } from "@konyvelo/shared";
+import { FX_RATE_SOURCE_LABELS, type CompanyDto, type DocumentDto, type DocumentRef } from "@konyvelo/shared";
 import { NEW_ENTRY_PATH } from "../../app/AppLayout";
 import { useWorkspace } from "../../app/workspace";
-import { ApiError, post } from "../../lib/api";
+import { ApiError, get, post } from "../../lib/api";
 import { fiscalYearLabel, formatDateHu, formatDateTimeHu } from "../../lib/format";
 import { DateInput } from "../../ui/DateInput";
 import { Field } from "../../ui/Field";
@@ -255,6 +256,11 @@ function ReverseDialog({ doc, onDone }: { doc: DocumentDto; onDone: (id: string)
   const toast = useToast();
   const invalidate = useInvalidateDocuments();
   const [open, setOpen] = useState(false);
+  const company = useQuery({
+    queryKey: ["company", ws.company?.id],
+    queryFn: () => get<CompanyDto>(`/api/companies/${ws.company!.id}`),
+    enabled: open && Boolean(ws.company),
+  });
   const [date, setDate] = useState(doc.accountingDate);
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -307,8 +313,9 @@ function ReverseDialog({ doc, onDone }: { doc: DocumentDto; onDone: (id: string)
           <AlertDialog.Description asChild>
             <div>
               <p>
-                A rendszer új, azonnal könyvelt <strong>sztornó bizonylatot</strong> készít a(z) <span className="mono">{doc.serialNumber}</span> összes tételével,
-                fordított oldalon. Az eredeti bizonylat változatlanul megmarad, és a kettő hivatkozik egymásra.
+                A rendszer új, azonnal könyvelt <strong>sztornó bizonylatot</strong> készít a(z) <span className="mono">{doc.serialNumber}</span> összes tételével,{" "}
+                {company.data?.reversalMethod === "NEGATIVE" ? "ugyanazon az oldalon, negatív előjellel" : "fordított oldalon"} (a cégadatoknál
+                állítható). Az eredeti bizonylat változatlanul megmarad, és a kettő hivatkozik egymásra.
               </p>
               <p>
                 <strong>A sztornó nem vonható vissza.</strong> Ha csak egy része hibás, használjon helyesbítő bizonylatot.

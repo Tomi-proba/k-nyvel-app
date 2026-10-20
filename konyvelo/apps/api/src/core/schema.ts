@@ -59,6 +59,7 @@ export const companies = pgTable("companies", {
   reportType: text("report_type").notNull().default("SIMPLIFIED_ANNUAL").$type<"SIMPLIFIED_ANNUAL" | "MICRO">(),
   significantErrorThreshold: bigint("significant_error_threshold", { mode: "number" }),
   fxRateSource: text("fx_rate_source").notNull().default("MNB").$type<"MNB" | "ECB" | "BANK" | "VAT_ACT">(),
+  reversalMethod: text("reversal_method").notNull().default("SWAP").$type<"SWAP" | "NEGATIVE">(),
   createdAt: ts("created_at").notNull().defaultNow(),
   createdBy: uuid("created_by").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),

@@ -31,7 +31,7 @@ import { requireCompanyPermission, type AuthUser } from "../../core/auth";
 import { pgErrorCode, PG_RAISE, PG_UNIQUE_VIOLATION, type Executor, type Tx } from "../../core/db";
 import { assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
 import type { AppModule } from "../../core/modules";
-import { documents, documentSequences, fiscalYears, journalLines, partners, periods, users } from "../../core/schema";
+import { companies, documents, documentSequences, fiscalYears, journalLines, partners, periods, users } from "../../core/schema";
 import { listAccounts } from "../accounts";
 
 type DocRow = typeof documents.$inferSelect;
@@ -351,7 +351,7 @@ async function postDocument(tx: Tx, companyId: string, docId: string, user: Auth
   const lines = await tx.select().from(journalLines).where(eq(journalLines.documentId, doc.id)).orderBy(asc(journalLines.lineNo));
   const accounts = await accountMap(tx, companyId);
 
-  const errors = validateForPosting({ ...doc, lines }, (id) => accounts.get(id));
+  const errors = validateForPosting({ ...doc, lines }, (id) => accounts.get(id), { allowNegative: doc.docType === "SZT" });
   lines.forEach((l, i) => {
     const a = l.accountId ? accounts.get(l.accountId) : undefined;
     if (!a || errors[`lines.${i}.accountId`]) return;
@@ -605,6 +605,7 @@ export const documentsModule: AppModule = {
       const id = await db
         .transaction(async (tx) => {
           const orig = await loadDoc(tx, companyId, documentId, true);
+          const [company] = await tx.select({ reversalMethod: companies.reversalMethod }).from(companies).where(eq(companies.id, companyId));
           if (orig.status !== "POSTED") throw conflict("Csak könyvelt bizonylat sztornózható; a piszkozat egyszerűen törölhető.");
           if (orig.docType === "SZT") throw conflict("Sztornó bizonylat nem sztornózható. Ha hibás volt, rögzítse újra az eredeti tételt.");
           const [already] = await tx.select({ serial: documents.serialNumber }).from(documents).where(eq(documents.reversesDocumentId, orig.id));
@@ -637,7 +638,10 @@ export const documentsModule: AppModule = {
             })
             .returning({ id: documents.id });
           await tx.insert(journalLines).values(
-            reverseLines(origLines.map((l) => ({ ...l, side: l.side! }))).map(({ id: _id, documentId: _d, ...l }) => ({ ...l, documentId: storno!.id })),
+            reverseLines(
+              origLines.map((l) => ({ ...l, side: l.side! })),
+              company!.reversalMethod,
+            ).map(({ id: _id, documentId: _d, ...l }) => ({ ...l, documentId: storno!.id })),
           );
           const posted = await postDocument(tx, companyId, storno!.id, user, request.ip, { reversal: true });
           await writeAudit(tx, {

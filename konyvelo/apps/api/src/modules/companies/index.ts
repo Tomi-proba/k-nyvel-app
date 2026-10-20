@@ -36,6 +36,7 @@ function toDto(c: CompanyRow): CompanyDto {
     reportType: c.reportType,
     significantErrorThreshold: c.significantErrorThreshold,
     fxRateSource: c.fxRateSource,
+    reversalMethod: c.reversalMethod,
     createdAt: c.createdAt.toISOString(),
   };
 }

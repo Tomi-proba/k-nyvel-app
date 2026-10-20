@@ -105,7 +105,11 @@ export const GLOSSARY = {
   },
   sztorno: {
     title: "Sztornó",
-    text: "Egy könyvelt bizonylat teljes visszavezetése: új, saját sorszámú bizonylat ugyanazokkal a tételekkel, fordított oldalon. Az eredeti bizonylat változatlanul látható marad (Szt. 165. § (2), 167. § (7)).",
+    text: "Egy könyvelt bizonylat teljes visszavezetése: új, saját sorszámú bizonylat ugyanazokkal a tételekkel – a cég beállítása szerint fordított oldalon vagy negatív előjellel. Az eredeti bizonylat változatlanul látható marad (Szt. 165. § (2), 167. § (7)).",
+  },
+  sztornoModja: {
+    title: "A sztornó módja",
+    text: "Fordított oldalon: a sztornó ugyanazokat az összegeket a másik oldalra könyveli (a számlák forgalma mindkét oldalon nő). Negatív előjellel („piros sztornó”): ugyanazon az oldalon, mínusz összeggel könyvel, így a forgalom nem nő. A törvény egyiket sem írja elő; a számviteli politikában kell rögzíteni.",
   },
   helyesbito: {
     title: "Helyesbítő bizonylat",

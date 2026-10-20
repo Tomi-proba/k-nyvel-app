@@ -33,6 +33,8 @@ export type CompanyDto = {
   reportType: (typeof REPORT_TYPES)[number];
   significantErrorThreshold: number | null;
   fxRateSource: (typeof FX_RATE_SOURCES)[number];
+  /** A sztornó módja: fordított oldalon vagy negatív előjellel. */
+  reversalMethod: "SWAP" | "NEGATIVE";
   createdAt: string;
 };
 

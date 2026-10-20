@@ -32,13 +32,14 @@ e2e               Playwright böngészős tesztek akadálymentességi (axe) elle
 
 ## Telepítés (fejlesztői gép)
 
-Előfeltételek: **Node.js 22**, **npm 11** (az npm 10-ben ismert hiba miatt), **PostgreSQL 16**.
+> **Windowson, kezdőknek:** lépésről lépésre: [docs/TELEPITES-WINDOWS.md](docs/TELEPITES-WINDOWS.md)
+
+Előfeltételek: **Node.js 22 vagy újabb (LTS)**, **npm 11** (az npm 10-ben ismert hiba miatt), **PostgreSQL 16**.
 
 ```bash
 cd konyvelo
 npx npm@11 install               # vagy: npm install, ha már npm 11 van telepítve
-cp .env.example .env              # szükség szerint szerkessze
-sudo -u postgres bash scripts/db-setup.sh   # adatbázis-felhasználók és adatbázisok
+npm run db:setup                  # .env, adatbázis-felhasználók és adatbázisok (a postgres jelszavát kéri)
 npm run db:migrate                # táblák, megkötések, triggerek
 npm run dev                       # API: http://127.0.0.1:3000, felület: http://localhost:5173
 ```

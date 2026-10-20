@@ -163,6 +163,22 @@ describe("sztornó és sorszám", () => {
     ]);
   });
 
+  it("negatív előjeles sztornó: ugyanazon az oldalon, mínusz összeggel; egyensúlyban marad", () => {
+    const lines = [
+      { accountId: "a", side: "D" as const, amount: 500 },
+      { accountId: "b", side: "C" as const, amount: 500 },
+    ];
+    const neg = reverseLines(lines, "NEGATIVE");
+    expect(neg).toEqual([
+      { accountId: "a", side: "D", amount: -500 },
+      { accountId: "b", side: "C", amount: -500 },
+    ]);
+    expect(documentBalance(neg)).toEqual({ debit: -500, credit: -500, difference: 0 });
+    // Negatív összeg csak sztornóban megengedett.
+    expect(validateForPosting(base({ lines: neg }))["lines.0.amount"]).toMatch(/pozitív/);
+    expect(validateForPosting(base({ lines: neg }), undefined, { allowNegative: true })).toEqual({});
+  });
+
   it("sorszám az üzleti év kezdő évével", () => {
     expect(formatSerialNumber("SZSZ", "2026-01-01", 12)).toBe("SZSZ-2026-00012");
     expect(formatSerialNumber("BANK", "2026-07-01", 1)).toBe("BANK-2026-00001");

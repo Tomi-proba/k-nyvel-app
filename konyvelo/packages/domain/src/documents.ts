@@ -90,7 +90,7 @@ export function documentBalance(lines: readonly BalanceLine[]): Balance {
   let debit = 0;
   let credit = 0;
   for (const l of lines) {
-    if (!l.amount || l.amount <= 0) continue;
+    if (!l.amount) continue;
     if (l.side === "D") debit += l.amount;
     else if (l.side === "C") credit += l.amount;
   }
@@ -144,6 +144,7 @@ const SUBLEDGER_PARTNER_NEEDED: Subledger[] = ["CUSTOMER", "SUPPLIER"];
 export function validateForPosting(
   doc: PostingCheckInput,
   accountOf: (accountId: string) => AccountInfo | undefined = () => undefined,
+  opts: { allowNegative?: boolean } = {},
 ): Record<string, string> {
   const e: Record<string, string> = {};
   const type = isDocumentType(doc.docType) ? DOCUMENT_TYPES[doc.docType] : null;
@@ -177,7 +178,8 @@ export function validateForPosting(
   complete.forEach((l) => {
     const i = doc.lines.indexOf(l);
     if (!l.accountId) e[`lines.${i}.accountId`] = "Válasszon számlát.";
-    if (!l.amount || l.amount <= 0) e[`lines.${i}.amount`] = "Adjon meg pozitív összeget a tartozik vagy a követel oldalon.";
+    // Negatív összeg csak a negatív előjeles sztornóban fordulhat elő.
+    if (!l.amount || (l.amount < 0 && !opts.allowNegative)) e[`lines.${i}.amount`] = "Adjon meg pozitív összeget a tartozik vagy a követel oldalon.";
     else if (!l.side) e[`lines.${i}.amount`] = "Adja meg, hogy tartozik vagy követel.";
     const acc = l.accountId ? accountOf(l.accountId) : undefined;
     if (acc && SUBLEDGER_PARTNER_NEEDED.includes(acc.subledger)) needsPartner = true;
@@ -197,9 +199,24 @@ export function validateForPosting(
   return e;
 }
 
-/** Sztornó: ugyanazok a tételek fordított oldalon (a forgalom így is kiegyenlítődik). */
-export function reverseLines<L extends { side: LineSide }>(lines: readonly L[]): L[] {
-  return lines.map((l) => ({ ...l, side: l.side === "D" ? "C" : "D" }));
+/**
+ * A sztornó módja (cégenként állítható, a számviteli politika szerint):
+ * SWAP – ugyanazok az összegek fordított oldalon; NEGATIVE – ugyanazon az
+ * oldalon negatív előjellel („piros sztornó”), így a számlák forgalma sem
+ * növekszik.
+ */
+export type ReversalMethod = "SWAP" | "NEGATIVE";
+export const REVERSAL_METHODS: readonly ReversalMethod[] = ["SWAP", "NEGATIVE"];
+export const REVERSAL_METHOD_LABELS: Record<ReversalMethod, string> = {
+  SWAP: "Fordított oldalon (ugyanazok az összegek a másik oldalon)",
+  NEGATIVE: "Negatív előjellel (ugyanazon az oldalon, mínusz összeggel)",
+};
+
+/** Sztornótételek az eredeti tételekből, a választott módon. */
+export function reverseLines<L extends { side: LineSide; amount: number }>(lines: readonly L[], method: ReversalMethod = "SWAP"): L[] {
+  return method === "NEGATIVE"
+    ? lines.map((l) => ({ ...l, amount: -l.amount }))
+    : lines.map((l) => ({ ...l, side: l.side === "D" ? "C" : "D" }));
 }
 
 // ---------- Rögzítési határidő (Szt. 165. § (3)) ----------

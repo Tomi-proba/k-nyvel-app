@@ -1,4 +1,4 @@
-import { formatHuf, parseHufInput } from "@konyvelo/domain";
+import { formatHuf, parseHufInput, REVERSAL_METHOD_LABELS, REVERSAL_METHODS } from "@konyvelo/domain";
 import {
   companyCreateSchema,
   FX_RATE_SOURCE_LABELS,
@@ -24,6 +24,7 @@ type Values = {
   reportType: CompanyCreateInput["reportType"];
   significantErrorThreshold: string;
   fxRateSource: CompanyCreateInput["fxRateSource"];
+  reversalMethod: CompanyDto["reversalMethod"];
 };
 
 function initialValues(c?: CompanyDto): Values {
@@ -41,6 +42,7 @@ function initialValues(c?: CompanyDto): Values {
     significantErrorThreshold:
       c?.significantErrorThreshold != null ? formatHuf(c.significantErrorThreshold, { withUnit: false }) : "",
     fxRateSource: c?.fxRateSource ?? "MNB",
+    reversalMethod: c?.reversalMethod ?? "SWAP",
   };
 }
 
@@ -178,6 +180,17 @@ export function CompanyForm({
                 {FX_RATE_SOURCES.map((s) => (
                   <option key={s} value={s}>
                     {FX_RATE_SOURCE_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+          <Field label="A sztornó módja" error={form.errors.reversalMethod} help="sztornoModja" required hint="A számviteli politika szerint. A már könyvelt sztornókat nem érinti.">
+            {(p) => (
+              <select {...p} value={form.values.reversalMethod} onChange={(e) => form.set("reversalMethod", e.target.value as Values["reversalMethod"])}>
+                {REVERSAL_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {REVERSAL_METHOD_LABELS[m]}
                   </option>
                 ))}
               </select>
