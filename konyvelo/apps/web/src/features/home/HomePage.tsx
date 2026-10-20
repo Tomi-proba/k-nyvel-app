@@ -89,6 +89,42 @@ function TodoCard() {
       tone: "warning",
     });
   }
+  if (t.overdueReceivables.count > 0) {
+    items.push({
+      key: "overdue-ar",
+      to: "/partnerek/nyitott-tetelek?tipus=vevo&lejart=1",
+      title: `${t.overdueReceivables.count} lejárt vevőkövetelés: ${formatHuf(t.overdueReceivables.total)}`,
+      detail: "A fizetési határidő lejárt, de a tétel még nincs kiegyenlítve.",
+      tone: "warning",
+    });
+  }
+  if (t.overduePayables.count > 0) {
+    items.push({
+      key: "overdue-ap",
+      to: "/partnerek/nyitott-tetelek?tipus=szallito&lejart=1",
+      title: `${t.overduePayables.count} lejárt szállítói számla: ${formatHuf(t.overduePayables.total)}`,
+      detail: "Fizetendő, a határidő már lejárt.",
+      tone: "danger",
+    });
+  }
+  if (t.unappliedPayments > 0) {
+    items.push({
+      key: "unapplied",
+      to: "/partnerek/nyitott-tetelek",
+      title: `${t.unappliedPayments} párosítatlan fizetés`,
+      detail: "Túlfizetés vagy előleg, illetve olyan fizetés, amelyhez még nem választottak számlát.",
+      tone: "info",
+    });
+  }
+  for (const c of new Map(t.cashOverLimit.map((x) => [x.accountId, x])).values()) {
+    items.push({
+      key: `cash-${c.accountId}`,
+      to: `/konyveles/penzeszkozok?szamla=${c.accountId}`,
+      title: `Pénztár (${c.accountNumber}): a záróegyenleg meghaladta a maximumot`,
+      detail: `Legutóbb ${formatDateHu(c.date)}: ${formatHuf(c.closing)} (maximum: ${formatHuf(c.limit)}, pénzkezelési szabályzat).`,
+      tone: "warning",
+    });
+  }
   if (t.unmappedAccounts > 0) {
     items.push({
       key: "mapping",

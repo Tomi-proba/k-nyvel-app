@@ -95,6 +95,16 @@ export const documentInputSchema = z.object({
   correctsDocumentId: optionalUuid("Érvénytelen bizonylat."),
   templateId: optionalUuid("Érvénytelen sablon."),
   lines: z.array(lineSchema).max(500, "Egy bizonylaton legfeljebb 500 tételsor lehet.").default([]),
+  /** Kiegyenlítendő nyitott tételek (könyveléskor párosítás lesz belőlük). */
+  settlements: z
+    .array(
+      z.object({
+        itemLineId: z.uuid("Érvénytelen tétel."),
+        amount: z.number({ error: "Érvénytelen összeg." }).int("Az összeg egész fillér legyen.").positive("Adjon meg pozitív összeget."),
+      }),
+    )
+    .max(200, "Egy bizonylaton legfeljebb 200 tétel egyenlíthető ki.")
+    .default([]),
   post: z.boolean().default(false),
 });
 export type DocumentInput = z.input<typeof documentInputSchema>;
@@ -169,6 +179,96 @@ export type DocumentDto = {
   contentHash: string | null;
   deadline: DeadlineDto;
   lines: DocumentLineDto[];
+  /** Piszkozatban: a kiválasztott, kiegyenlítendő tételek. */
+  settlementPlan: Array<{ itemLineId: string; amount: number }>;
+  /** Könyvelt bizonylatnál: a párosítások (mit egyenlít ki, illetve mi egyenlíti ki). */
+  settlements: SettlementDto[];
+};
+
+export type SettlementDto = {
+  id: string;
+  /** Ennek a bizonylatnak a sora. */
+  lineId: string;
+  /** A másik oldal bizonylata. */
+  otherDocumentId: string;
+  otherSerialNumber: string | null;
+  otherExternalNumber: string | null;
+  /** ITEM: ez a bizonylat a nyitott tétel; PAYMENT: ez egyenlít ki. */
+  role: "ITEM" | "PAYMENT";
+  amount: number;
+  source: "ENTRY" | "MANUAL" | "REVERSAL";
+};
+
+// ---------- Analitika ----------
+
+export type OpenItemDto = {
+  lineId: string;
+  documentId: string;
+  serialNumber: string | null;
+  externalNumber: string | null;
+  docType: DocumentType;
+  description: string | null;
+  partnerId: string | null;
+  partnerName: string | null;
+  accountId: string;
+  accountNumber: string;
+  kind: "RECEIVABLE" | "PAYABLE";
+  accountingDate: string;
+  issueDate: string | null;
+  dueDate: string;
+  amount: number;
+  settled: number;
+  open: number;
+  daysOverdue: number;
+};
+
+/** Párosítatlan (vagy részben párosított) fizetés, jóváírás: túlfizetés, előleg. */
+export type UnappliedDto = Omit<OpenItemDto, "dueDate" | "daysOverdue" | "open"> & { unapplied: number };
+
+export type OpenItemsResponse = { asOf: string; items: OpenItemDto[]; unapplied: UnappliedDto[] };
+
+export const settlementCreateSchema = z.object({
+  itemLineId: z.uuid("Válasszon nyitott tételt."),
+  settlingLineId: z.uuid("Válasszon kiegyenlítő tételt."),
+  amount: z.number({ error: "Érvénytelen összeg." }).int("Az összeg egész fillér legyen.").positive("Adjon meg pozitív összeget."),
+});
+
+export type ReconciliationRowDto = {
+  accountId: string;
+  accountNumber: string;
+  accountName: string;
+  subledger: "CUSTOMER" | "SUPPLIER" | "BANK" | "CASH";
+  /** Főkönyvi egyenleg (a számla szokásos oldala szerint pozitív). */
+  ledger: number;
+  /** Analitikából számolt egyenleg (vevő/szállító); bank és pénztár esetén null. */
+  subledgerBalance: number | null;
+  difference: number;
+};
+export type ReconciliationResponse = { asOf: string; rows: ReconciliationRowDto[] };
+
+export type MoneyRegisterDto = {
+  accountId: string;
+  accountNumber: string;
+  accountName: string;
+  subledger: "BANK" | "CASH";
+  from: string;
+  to: string;
+  opening: number;
+  closing: number;
+  rows: Array<{
+    documentId: string;
+    serialNumber: string;
+    docType: DocumentType;
+    date: string;
+    partnerName: string | null;
+    description: string | null;
+    debit: number;
+    credit: number;
+    balance: number;
+  }>;
+  /** Napi záróegyenlegek; pénztárnál a szabályzat szerinti maximum túllépése jelölve. */
+  days: Array<{ date: string; closing: number; overLimit: boolean; negative: boolean }>;
+  limit: number | null;
 };
 
 export type DocumentListItemDto = {
@@ -202,6 +302,11 @@ export type TodosDto = {
   latePostedLast30Days: number;
   /** Könyvelhető, aktív számlák kimutatássor nélkül. */
   unmappedAccounts: number;
+  overdueReceivables: { count: number; total: number };
+  overduePayables: { count: number; total: number };
+  unappliedPayments: number;
+  /** Pénztár: az elmúlt 30 nap napjai, amikor a záróegyenleg meghaladta a maximumot. */
+  cashOverLimit: Array<{ accountId: string; accountNumber: string; date: string; closing: number; limit: number }>;
 };
 
 // ---------- Kontírozási sablonok ----------

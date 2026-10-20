@@ -115,6 +115,10 @@ export const GLOSSARY = {
     title: "Helyesbítő bizonylat",
     text: "Egy könyvelt bizonylat részleges javítása: csak a különbözetet könyveli, és hivatkozik az eredetire. Ha az eredeti egy korábbi üzleti évbe tartozik, a rendszer előző évet érintő hibaként jelöli (Szt. 3. § (3)).",
   },
+  kiegyenlites: {
+    title: "Kiegyenlítés (párosítás)",
+    text: "Melyik fizetés melyik számlát egyenlíti ki. A nyitott tétel a még ki nem fizetett számla (vevőnél követelés, szállítónál tartozás). Egy fizetés több számlát, egy számlát több részfizetés is kiegyenlíthet; a párosítatlan rész túlfizetésként marad (Szt. 65. § (6)).",
+  },
   rogzitesiHatarido: {
     title: "Rögzítési határidő",
     text: "Pénztári tételt a pénzmozgással egyidejűleg, banki tételt a kivonat megérkezésekor (a rendszer legkésőbb a tárgyhót követő hó 15-ét figyeli), egyéb bizonylatot legkésőbb a tárgynegyedévet követő hó végéig kell könyvelni (Szt. 165. § (3)).",

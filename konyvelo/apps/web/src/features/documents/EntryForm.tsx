@@ -23,6 +23,7 @@ import {
   newRow,
   partnerTemplate,
   prepare,
+  rowsFromPlan,
   suggestedDueDate,
   validateEntry,
   withPartner,
@@ -34,7 +35,9 @@ import {
 } from "./entry-model";
 import { PreviewDialog, type PreviewData } from "./PreviewDialog";
 import { deadlineText, useInvalidateDocuments, useTemplates } from "./queries";
+import { SettlementSection } from "./SettlementSection";
 import { TemplateDialog } from "./TemplateDialog";
+import { useOpenItems } from "../subledger/SubledgerPages";
 
 /**
  * Bizonylat rögzítése (PLAN 5.2): fejadatok, tételsorok tartozik/követel
@@ -77,7 +80,11 @@ export function EntryForm({ initial, draftId, reference }: { initial: EntryState
   const type = h.docType ? DOCUMENT_TYPES[h.docType] : null;
   const defaultYear = Number((ws.fiscalYear?.startDate ?? h.accountingDate ?? "").slice(0, 4)) || undefined;
 
-  const v = useMemo(() => validateEntry(state, accounts), [state, accounts]);
+  // A partner nyitott tételei (kiegyenlítéshez); számlánál nem kínáljuk fel.
+  const offerSettlement = Boolean(h.partnerId) && h.docType !== "" && h.docType !== "SZSZ" && h.docType !== "VSZ";
+  const openQ = useOpenItems({ partnerId: h.partnerId }, offerSettlement);
+  const openMap = useMemo(() => new Map((openQ.data?.items ?? []).map((i) => [i.lineId, i])), [openQ.data]);
+  const v = useMemo(() => validateEntry(state, accounts, openQ.data ? openMap : undefined), [state, accounts, openQ.data, openMap]);
   const errors = attempted ? { ...v.errors, ...serverErrors } : serverErrors;
   const deadline = useMemo(() => entryDeadline(state, accounts), [state, accounts]);
   const balanceMsg = balanceErrorMessage(v.balance);
@@ -443,6 +450,23 @@ export function EntryForm({ initial, draftId, reference }: { initial: EntryState
             </div>
           </details>
         </section>
+
+        {offerSettlement && ((openQ.data?.items.length ?? 0) > 0 || state.plan.length > 0) && (
+          <SettlementSection
+            items={openQ.data?.items ?? []}
+            plan={state.plan}
+            errors={errors}
+            onChange={(plan) =>
+              update((s) => {
+                const next = { ...s, plan };
+                // Első kijelöléskor, ha még nincs számla a sorokon, a sorok is kitöltődnek.
+                const empty = s.rows.every((r) => !r.accountId && !r.debit && !r.credit);
+                return s.plan.length === 0 && plan.length > 0 && empty ? { ...next, rows: rowsFromPlan(next, openMap, accountList) } : next;
+              })
+            }
+            onFillRows={() => update((s) => ({ ...s, rows: rowsFromPlan(s, openMap, accountList) }))}
+          />
+        )}
 
         <section className="card" aria-labelledby="tetelek">
           <div className="row" style={{ justifyContent: "space-between" }}>

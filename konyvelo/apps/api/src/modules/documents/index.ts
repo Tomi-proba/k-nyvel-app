@@ -13,6 +13,10 @@ import {
   reverseLines,
   todayIso,
   validateForPosting,
+  allocateSettlements,
+  formatHuf,
+  lineRole,
+  validateSettlementPlan,
   type DocumentType,
 } from "@konyvelo/domain";
 import {
@@ -24,6 +28,7 @@ import {
   type DocumentListResponse,
   type DocumentParsedInput,
   type DocumentRef,
+  type SettlementDto,
   type TodosDto,
 } from "@konyvelo/shared";
 import { writeAudit } from "../../core/audit";
@@ -31,7 +36,8 @@ import { requireCompanyPermission, type AuthUser } from "../../core/auth";
 import { pgErrorCode, PG_RAISE, PG_UNIQUE_VIOLATION, type Executor, type Tx } from "../../core/db";
 import { assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
 import type { AppModule } from "../../core/modules";
-import { companies, documents, documentSequences, fiscalYears, journalLines, partners, periods, users } from "../../core/schema";
+import { companies, documents, documentSequences, fiscalYears, journalLines, partners, periods, settlements, users } from "../../core/schema";
+import { cashOverLimit, firstNegativeCash, openItems } from "../subledger";
 import { listAccounts } from "../accounts";
 
 type DocRow = typeof documents.$inferSelect;
@@ -118,6 +124,17 @@ export async function documentDto(db: Executor, companyId: string, id: string): 
     .where(eq(documents.correctsDocumentId, doc.id))
     .orderBy(asc(documents.createdAt));
   const total = (side: "D" | "C") => lines.filter((l) => l.side === side).reduce((s, l) => s + l.amount, 0);
+  const lineIds = lines.map((l) => l.id);
+  const pairs = lineIds.length
+    ? await db.execute<{ id: string; item_line_id: string; settling_line_id: string; amount: string; source: SettlementDto["source"]; other_doc: string; other_serial: string | null; other_ext: string | null }>(sql`
+        SELECT s.id, s.item_line_id, s.settling_line_id, s.amount, s.source, od.id AS other_doc, od.serial_number AS other_serial, od.external_number AS other_ext
+          FROM settlements s
+          JOIN journal_lines ol ON ol.id = CASE WHEN s.item_line_id IN (${sql.join(lineIds.map((x) => sql`${x}`), sql`, `)}) THEN s.settling_line_id ELSE s.item_line_id END
+          JOIN documents od ON od.id = ol.document_id
+         WHERE s.item_line_id IN (${sql.join(lineIds.map((x) => sql`${x}`), sql`, `)}) OR s.settling_line_id IN (${sql.join(lineIds.map((x) => sql`${x}`), sql`, `)})
+         ORDER BY s.created_at`)
+    : { rows: [] };
+  const own = new Set(lineIds);
   return {
     id: doc.id,
     docType: doc.docType,
@@ -155,6 +172,17 @@ export async function documentDto(db: Executor, companyId: string, id: string): 
     postedByName: doc.postedBy ? (names.get(doc.postedBy) ?? null) : null,
     contentHash: doc.contentHash,
     deadline: deadlineOf(doc, touches(lines, accounts)),
+    settlementPlan: doc.settlementPlan,
+    settlements: pairs.rows.map((r) => ({
+      id: r.id,
+      lineId: own.has(r.item_line_id) ? r.item_line_id : r.settling_line_id,
+      otherDocumentId: r.other_doc,
+      otherSerialNumber: r.other_serial,
+      otherExternalNumber: r.other_ext,
+      role: own.has(r.item_line_id) ? ("ITEM" as const) : ("PAYMENT" as const),
+      amount: Number(r.amount),
+      source: r.source,
+    })),
     lines: lines.map((l) => {
       const a = l.accountId ? accounts.get(l.accountId) : undefined;
       return {
@@ -286,6 +314,7 @@ async function saveDraft(tx: Tx, companyId: string, user: AuthUser, input: Docum
     affectsFiscalYearId: corrects && corrects.fiscalYearId !== fy.id ? corrects.fiscalYearId : null,
     templateId: input.templateId ?? null,
     source: input.templateId ? "TEMPLATE" : "MANUAL",
+    settlementPlan: input.settlements,
     updatedAt: new Date(),
   };
 
@@ -379,6 +408,36 @@ async function postDocument(tx: Tx, companyId: string, docId: string, user: Auth
   } else if (!period || period.status === "CLOSED") {
     errors.accountingDate = `A(z) ${monthLabelHu(doc.accountingDate)} lezárt időszak, ide nem lehet könyvelni. Rögzítse helyesbítő tételként a nyitott időszakban.`;
   }
+  // Kiegyenlítendő tételek (K 4.4): a partner nyitott tételei közül.
+  const plan = opts.reversal ? [] : doc.settlementPlan;
+  const open = plan.length ? await openItems(tx, companyId, { partnerId: doc.partnerId ?? undefined }) : null;
+  if (open) {
+    const byLine = new Map(open.items.map((i) => [i.lineId, i]));
+    Object.assign(
+      errors,
+      validateSettlementPlan(
+        plan,
+        lines,
+        (id) => {
+          const i = byLine.get(id);
+          return i && { lineId: i.lineId, accountId: i.accountId, accountNumber: i.accountNumber, partnerId: i.partnerId, open: i.open, label: i.serialNumber ?? "" };
+        },
+        (id) => accounts.get(id)?.subledger,
+        doc.partnerId,
+      ),
+    );
+  }
+  // Pénztár: az egyenleg egyik napon sem lehet negatív (PLAN 4.7).
+  if (!opts.reversal) {
+    for (const accountId of new Set(lines.map((l) => l.accountId).filter((id): id is string => Boolean(id)))) {
+      const a = accounts.get(accountId);
+      if (a?.subledger !== "CASH") continue;
+      const neg = await firstNegativeCash(tx, accountId, doc.id, doc.accountingDate);
+      if (neg) {
+        errors.cash = `A(z) ${a.number} pénztár egyenlege negatív lenne (${formatDateHu(neg.date)}: ${formatHuf(neg.balance)}). Pénztárból csak a meglévő készpénz adható ki; előbb a bevételt rögzítse.`;
+      }
+    }
+  }
   if (Object.keys(errors).length) throw validationError(errors, "A bizonylat nem könyvelhető. Kérjük, javítsa a megjelölt hibákat.");
 
   const [seq] = await tx
@@ -439,6 +498,11 @@ async function postDocument(tx: Tx, companyId: string, docId: string, user: Auth
     .set({ status: "POSTED", seqNo, serialNumber, postedAt, postedBy: user.id, contentHash, prevHash, updatedAt: postedAt })
     .where(eq(documents.id, doc.id))
     .returning();
+  if (open && plan.length) {
+    const itemAccount = new Map(open.items.map((i) => [i.lineId, i.accountId]));
+    const pairs = allocateSettlements(plan, lines as Array<(typeof lines)[number]>, (id) => itemAccount.get(id), (id) => accounts.get(id)?.subledger);
+    if (pairs.length) await tx.insert(settlements).values(pairs.map((p) => ({ ...p, companyId, source: "ENTRY" as const, createdBy: user.id })));
+  }
   await writeAudit(tx, {
     companyId,
     userId: user.id,
@@ -644,6 +708,33 @@ export const documentsModule: AppModule = {
             ).map(({ id: _id, documentId: _d, ...l }) => ({ ...l, documentId: storno!.id })),
           );
           const posted = await postDocument(tx, companyId, storno!.id, user, request.ip, { reversal: true });
+          // Analitika: az eredeti bizonylat párosításai felbomlanak (pl. a kifizetett számla sztornójánál a
+          // fizetés újra párosítatlan lesz), az eredeti analitikás sorait pedig a sztornó sorai egyenlítik ki.
+          const origIds = origLines.map((l) => l.id);
+          const removed = await tx
+            .delete(settlements)
+            .where(sql`${settlements.itemLineId} IN (${sql.join(origIds.map((x) => sql`${x}`), sql`, `)}) OR ${settlements.settlingLineId} IN (${sql.join(origIds.map((x) => sql`${x}`), sql`, `)})`)
+            .returning();
+          const accs = await accountMap(tx, companyId);
+          const stornoLines = await tx.select().from(journalLines).where(eq(journalLines.documentId, storno!.id)).orderBy(asc(journalLines.lineNo));
+          const pairs = origLines.flatMap((l, i) => {
+            const sub = l.accountId ? accs.get(l.accountId)?.subledger : undefined;
+            const s = stornoLines[i];
+            if (!s || !sub || !l.side || !lineRole(sub, l.side) || !l.partnerId) return [];
+            return [{ companyId, itemLineId: l.id, settlingLineId: s.id, amount: Math.abs(l.amount), source: "REVERSAL" as const, createdBy: user.id }];
+          });
+          if (pairs.length) await tx.insert(settlements).values(pairs);
+          if (removed.length) {
+            await writeAudit(tx, {
+              companyId,
+              userId: user.id,
+              action: "settlement.delete",
+              entityType: "document",
+              entityId: orig.id,
+              before: { reason: "sztornó", settlements: removed.map((r) => ({ itemLineId: r.itemLineId, settlingLineId: r.settlingLineId, amount: r.amount })) },
+              ip: request.ip,
+            });
+          }
           await writeAudit(tx, {
             companyId,
             userId: user.id,
@@ -667,7 +758,16 @@ export const documentsModule: AppModule = {
       const drafts = await queryDocuments(db, companyId, [sql`d.status = 'DRAFT'`], 1000, 0);
       const recent = await queryDocuments(db, companyId, [sql`d.status = 'POSTED'`, sql`d.posted_at >= now() - interval '30 days'`], 5000, 0);
       const accounts = await listAccounts(db, companyId);
+      const open = await openItems(db, companyId, { asOf: today });
+      const overdue = (kind: "RECEIVABLE" | "PAYABLE") => {
+        const list = open.items.filter((i) => i.kind === kind && i.daysOverdue > 0);
+        return { count: list.length, total: list.reduce((s, i) => s + i.open, 0) };
+      };
       return {
+        overdueReceivables: overdue("RECEIVABLE"),
+        overduePayables: overdue("PAYABLE"),
+        unappliedPayments: open.unapplied.length,
+        cashOverLimit: await cashOverLimit(db, companyId),
         drafts: drafts.rows
           .map((r) => {
             const item = listItem(r, today);

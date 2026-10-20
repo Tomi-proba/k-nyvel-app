@@ -16,6 +16,7 @@ import { companiesModule } from "./modules/companies";
 import { fiscalYearsModule } from "./modules/fiscal-years";
 import { documentsModule } from "./modules/documents";
 import { partnersModule } from "./modules/partners";
+import { subledgerModule } from "./modules/subledger";
 import { templatesModule } from "./modules/templates";
 
 /** A bekapcsolt modulok. Új modul felvétele: ide kell beírni. */
@@ -27,6 +28,7 @@ export const MODULES: AppModule[] = [
   partnersModule,
   templatesModule,
   documentsModule,
+  subledgerModule,
   auditModule,
 ];
 

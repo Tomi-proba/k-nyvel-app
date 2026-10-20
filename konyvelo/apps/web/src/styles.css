@@ -865,3 +865,29 @@ tr.clickable:hover td {
 .todo-info {
   border-left-color: var(--primary);
 }
+
+/* ---------- Alnavigáció (fülek egy főmenüponton belül) ---------- */
+
+.sub-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+.sub-nav a {
+  display: inline-block;
+  padding: 6px 12px;
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+}
+.sub-nav a[aria-current="page"] {
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+.sub-nav a:hover {
+  background: var(--surface);
+}

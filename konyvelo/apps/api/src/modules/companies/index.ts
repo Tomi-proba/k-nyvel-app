@@ -37,6 +37,7 @@ function toDto(c: CompanyRow): CompanyDto {
     significantErrorThreshold: c.significantErrorThreshold,
     fxRateSource: c.fxRateSource,
     reversalMethod: c.reversalMethod,
+    cashClosingLimit: c.cashClosingLimit,
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -84,7 +85,12 @@ export const companiesModule: AppModule = {
         .transaction(async (tx) => {
           const [c] = await tx
             .insert(companies)
-            .values({ ...input, significantErrorThreshold: input.significantErrorThreshold ?? null, createdBy: user.id })
+            .values({
+              ...input,
+              significantErrorThreshold: input.significantErrorThreshold ?? null,
+              cashClosingLimit: input.cashClosingLimit ?? null,
+              createdBy: user.id,
+            })
             .returning();
           await tx.insert(companyMemberships).values({ companyId: c!.id, userId: user.id, role: "ADMIN", createdBy: user.id });
           await writeAudit(tx, {

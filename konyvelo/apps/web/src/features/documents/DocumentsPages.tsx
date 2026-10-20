@@ -17,6 +17,8 @@ import { EntryForm } from "./EntryForm";
 import { entryFromDocument, newEntry } from "./entry-model";
 import { deadlineText, documentsKey, useDocument } from "./queries";
 import { StatusBadge } from "./StatusBadge";
+import { LEDGER_TABS } from "../subledger/MoneyPage";
+import { SubNav } from "../subledger/SubledgerPages";
 
 const PAGE_SIZE = 50;
 
@@ -74,6 +76,7 @@ export function DocumentsPage() {
 
   return (
     <>
+      <SubNav label="Könyvelés almenü" items={LEDGER_TABS} />
       <PageHeader
         title="Könyvelés"
         description={

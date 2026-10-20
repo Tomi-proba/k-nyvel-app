@@ -122,6 +122,12 @@ const companyFields = {
     .nullable()
     .optional(),
   fxRateSource: z.enum(FX_RATE_SOURCES, { error: "Válasszon árfolyamforrást." }),
+  cashClosingLimit: z
+    .number({ error: "Érvénytelen összeg. Példa: 2 000 000" })
+    .int("A pénztár-záróegyenleg maximuma egész fillér legyen.")
+    .min(0, "A pénztár-záróegyenleg maximuma nem lehet negatív.")
+    .nullable()
+    .optional(),
   reversalMethod: z.enum(REVERSAL_METHODS as [ReversalMethod, ...ReversalMethod[]], { error: "Válassza ki a sztornó módját." }),
 };
 

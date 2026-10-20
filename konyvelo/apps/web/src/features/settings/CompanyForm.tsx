@@ -25,6 +25,7 @@ type Values = {
   significantErrorThreshold: string;
   fxRateSource: CompanyCreateInput["fxRateSource"];
   reversalMethod: CompanyDto["reversalMethod"];
+  cashClosingLimit: string;
 };
 
 function initialValues(c?: CompanyDto): Values {
@@ -43,14 +44,17 @@ function initialValues(c?: CompanyDto): Values {
       c?.significantErrorThreshold != null ? formatHuf(c.significantErrorThreshold, { withUnit: false }) : "",
     fxRateSource: c?.fxRateSource ?? "MNB",
     reversalMethod: c?.reversalMethod ?? "SWAP",
+    cashClosingLimit: c?.cashClosingLimit != null ? formatHuf(c.cashClosingLimit, { withUnit: false }) : "",
   };
 }
 
 function toPayload(v: Values) {
   const threshold = v.significantErrorThreshold.trim();
   const parsed = threshold === "" ? null : parseHufInput(threshold);
+  const limit = v.cashClosingLimit.trim() === "" ? null : parseHufInput(v.cashClosingLimit);
   return {
     ...v,
+    cashClosingLimit: limit === null ? null : limit.ok ? limit.value : Number.NaN,
     // Hibás összegnél NaN-t adunk át, így a séma érthető hibát jelez.
     significantErrorThreshold: parsed === null ? null : parsed.ok ? parsed.value : Number.NaN,
   };
@@ -184,6 +188,13 @@ export function CompanyForm({
                 ))}
               </select>
             )}
+          </Field>
+          <Field
+            label="Pénztár napi záróegyenlegének maximuma (Ft)"
+            error={form.errors.cashClosingLimit}
+            hint="A pénzkezelési szabályzat szerint (Szt. 14. § (8)). Túllépésnél a rendszer figyelmeztet; üresen nincs ellenőrzés."
+          >
+            {text("cashClosingLimit", { inputMode: "decimal" })}
           </Field>
           <Field label="A sztornó módja" error={form.errors.reversalMethod} help="sztornoModja" required hint="A számviteli politika szerint. A már könyvelt sztornókat nem érinti.">
             {(p) => (

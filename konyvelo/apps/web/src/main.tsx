@@ -9,6 +9,8 @@ import { WorkspaceProvider } from "./app/workspace";
 import { ForcedPasswordChangePage, LoginPage, SetupPage } from "./features/auth/AuthPages";
 import { ChartOfAccountsPage } from "./features/accounts/ChartOfAccountsPage";
 import { DocumentPage, DocumentsPage, NewDocumentPage } from "./features/documents/DocumentsPages";
+import { MoneyPage } from "./features/subledger/MoneyPage";
+import { OpenItemsPage, ReconciliationPage } from "./features/subledger/SubledgerPages";
 import { HomePage } from "./features/home/HomePage";
 import { NewPartnerPage, PartnerDetailPage, PartnersPage } from "./features/partners/PartnersPages";
 import { ComingSoon } from "./features/placeholders/ComingSoon";
@@ -84,9 +86,12 @@ function Root() {
           <Route index element={<HomePage />} />
           <Route path="konyveles" element={<DocumentsPage />} />
           <Route path={NEW_ENTRY_PATH.slice(1)} element={<NewDocumentPage />} />
+          <Route path="konyveles/penzeszkozok" element={<MoneyPage />} />
           <Route path="konyveles/:documentId" element={<DocumentPage />} />
           <Route path="partnerek" element={<PartnersPage />} />
           <Route path="partnerek/uj" element={<NewPartnerPage />} />
+          <Route path="partnerek/nyitott-tetelek" element={<OpenItemsPage />} />
+          <Route path="partnerek/egyeztetes" element={<ReconciliationPage />} />
           <Route path="partnerek/:partnerId" element={<PartnerDetailPage />} />
           <Route path="kimutatasok" element={<ComingSoon title="Kimutatások" step={5} description="Naplófőkönyv, főkönyvi kivonat, karton, mérleg és eredménykimutatás, exportokkal." />} />
           <Route path="zaras" element={<ComingSoon title="Zárás" step={6} description="Havi időszakok lezárása, évzárás előnézettel, nyitás." />} />

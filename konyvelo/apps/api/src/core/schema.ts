@@ -60,6 +60,7 @@ export const companies = pgTable("companies", {
   significantErrorThreshold: bigint("significant_error_threshold", { mode: "number" }),
   fxRateSource: text("fx_rate_source").notNull().default("MNB").$type<"MNB" | "ECB" | "BANK" | "VAT_ACT">(),
   reversalMethod: text("reversal_method").notNull().default("SWAP").$type<"SWAP" | "NEGATIVE">(),
+  cashClosingLimit: bigint("cash_closing_limit", { mode: "number" }),
   createdAt: ts("created_at").notNull().defaultNow(),
   createdBy: uuid("created_by").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -205,6 +206,18 @@ export const documents = pgTable("documents", {
   archiveStatus: text("archive_status").notNull().default("NONE"),
   authenticityMethod: text("authenticity_method").notNull().default("NONE"),
   authenticityRef: text("authenticity_ref"),
+  settlementPlan: jsonb("settlement_plan").notNull().default([]).$type<Array<{ itemLineId: string; amount: number }>>(),
+});
+
+export const settlements = pgTable("settlements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  itemLineId: uuid("item_line_id").notNull(),
+  settlingLineId: uuid("settling_line_id").notNull(),
+  amount: bigint("amount", { mode: "number" }).notNull(),
+  source: text("source").notNull().$type<"ENTRY" | "MANUAL" | "REVERSAL">(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").notNull(),
 });
 
 export const journalLines = pgTable("journal_lines", {

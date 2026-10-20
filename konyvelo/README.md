@@ -13,7 +13,7 @@ Magyar nyelvű, kettős könyvvitelt vezető webalkalmazás. A követelmények a
 | 1. Alapok | projektváz, adatbázis, belépés, jogosultság, audit napló, cégek, üzleti évek | ✅ kész |
 | 2. Számlatükör, partnerek | alapértelmezett számlatükör, szerkesztő, számlakereső, partnerek | ✅ kész (mérleg- és eredménykimutatás-sor hozzárendeléssel az Szt. 1–2. melléklete szerint) |
 | 3. Bizonylatok és tételek | rögzítés, egyensúly, előnézet, könyvelés hézagmentes sorszámmal, sztornó, helyesbítés, sablonok, rögzítési határidő, Teendők | ✅ kész |
-| 4. Analitika, bank, pénztár | | ⏳ |
+| 4. Analitika, bank, pénztár | nyitott tételek, kiegyenlítés (rögzítéskor vagy utólag), korosítás, főkönyv–analitika egyeztetés, bank- és pénztárnapló, negatív pénztár tiltása, pénztármaximum | ✅ kész |
 | 5. Kimutatások | | ⏳ |
 | 6. Zárás | | ⏳ |
 | 7. NAV Online Számla import | | ⏳ |
@@ -105,7 +105,15 @@ Kb. 10 perc. Indítás után (`npm run dev`, majd http://localhost:5173) üres a
 3. Létrejön a `SZT-2026-00001`: ugyanazok a tételek fordított oldalon, hivatkozással az eredetire. Az eredeti bizonylaton „Sztornózva” látszik, a tételei változatlanok, és még egyszer nem sztornózható.
 4. A listában az *Állapot: Sztornózott* szűrő mutatja az eredetit.
 
-**5. Amit még érdemes megnézni**
+**5. Nyitott tételek és kiegyenlítés (4. lépés)**
+
+1. Rögzítsen egy új szállítói számlát az Irodaszernek (pl. 50 800 Ft, Alt+L sablonnal).
+2. **Partnerek → Irodaszer Kft.**: a *Nyitott tételek* között ott az új számla; a *Párosítatlan fizetések* között a `BANK-2026-00001` (mert a hozzá tartozó számlát sztornózta). **Párosítás** → a számla kiegyenlítve.
+3. Új számla (pl. 25 400 Ft), majd **F2**, *Banki bizonylat*, partner: Irodaszer. Megjelenik a *Kiegyenlítendő tételek* lista: pipálja be a számlát – a tételsorok (454 T / bank K) maguktól kitöltődnek. Könyvelés után a bizonylaton: „Kiegyenlíti: SZSZ-…”.
+4. **Partnerek → Nyitott tételek**: korosítás (nem lejárt, 1–30, 31–60… nap); **Egyeztetés**: a 454 és 311 főkönyvi egyenlege egyezik az analitikával.
+5. **Könyvelés → Bank és pénztár**: futó egyenleg; írja be a kivonat záró egyenlegét, és a rendszer jelzi, egyezik-e. Pénztárnál negatív egyenleget nem enged; a Cégadatoknál megadható a napi pénztár-záróegyenleg maximuma.
+
+**6. Amit még érdemes megnézni**
 
 - *Helyesbítő bizonylat*: a `BANK-2026-00001` oldalán „Helyesbítő bizonylat” – csak a különbözetet kell rögzíteni, az eredeti tételei felül látszanak.
 - *Beállítások → Audit napló*: minden lépés (piszkozat, könyvelés, sztornó) benne van; a „Sértetlenség ellenőrzése” gomb ellenőrzi a hash-láncot.

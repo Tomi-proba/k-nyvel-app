@@ -41,10 +41,11 @@ export function useInvalidateDocuments() {
   const queryClient = useQueryClient();
   const companyId = useWorkspace().company?.id;
   return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: documentsKey(companyId) }),
-      queryClient.invalidateQueries({ queryKey: todosKey(companyId) }),
-    ]);
+    Promise.all(
+      [documentsKey(companyId), todosKey(companyId), ["open-items", companyId], ["money", companyId], ["reconciliation", companyId]].map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey }),
+      ),
+    );
 }
 
 /** A rögzítési határidő rövid szöveges állapota (Szt. 165. § (3)). */

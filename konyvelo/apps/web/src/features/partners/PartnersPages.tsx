@@ -9,6 +9,7 @@ import { Field } from "../../ui/Field";
 import { ErrorBox, Loading, PageHeader } from "../../ui/Page";
 import { useToast } from "../../ui/Toasts";
 import { PartnerForm } from "./PartnerForm";
+import { PARTNER_TABS, PartnerOpenItems, SubNav } from "../subledger/SubledgerPages";
 
 const partnersKey = (companyId: string | undefined) => ["partners", companyId] as const;
 
@@ -39,9 +40,10 @@ export function PartnersPage() {
 
   return (
     <>
+      <SubNav label="Partnerek almenü" items={PARTNER_TABS} />
       <PageHeader
         title="Partnerek"
-        description="Vevők és szállítók. A nyitott tételek és kiegyenlítések a 4. lépésben kerülnek ide."
+        description="Vevők és szállítók; a nyitott tételek a partner adatlapján és a Nyitott tételek fülön láthatók."
         actions={
           ws.can("partners:manage") && (
             <Link to="/partnerek/uj" className="btn btn-primary">
@@ -231,6 +233,7 @@ export function PartnerDetailPage() {
       </p>
       {q.isLoading && <Loading />}
       {q.error && <ErrorBox error={q.error} />}
+      {p && <PartnerOpenItems partnerId={p.id} />}
       {p && (
         <PartnerForm
           key={p.id}

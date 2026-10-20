@@ -120,7 +120,7 @@ export function TemplatesPage() {
                         <TemplateDialog template={t} onSaved={refresh} />
                         <ConfirmDialog
                           trigger={
-                            <button type="button" className="btn btn-small btn-danger" aria-label={`${t.name} törlése`}>
+                            <button type="button" className="btn btn-small btn-danger" aria-label={`Törlés: ${t.name}`}>
                               Törlés
                             </button>
                           }
@@ -203,7 +203,7 @@ function TemplateDialog({ template, onSaved }: { template: TemplateDto | null; o
     >
       <Dialog.Trigger asChild>
         {template ? (
-          <button type="button" className="btn btn-small" aria-label={`${template.name} szerkesztése`}>
+          <button type="button" className="btn btn-small" aria-label={`Szerkesztés: ${template.name}`}>
             Szerkesztés
           </button>
         ) : (

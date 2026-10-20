@@ -421,7 +421,7 @@ test("bizonylat: sztornó megerősítéssel, kölcsönös hivatkozás, szűrés"
   await confirm.getByRole("button", { name: "Sztornózás" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "SZT-2026-00001" })).toBeVisible();
   await expect(page.getByText("Ez a bizonylat sztornózza:")).toBeVisible();
-  await page.getByRole("link", { name: "SZSZ-2026-00001" }).click();
+  await page.getByRole("link", { name: "SZSZ-2026-00001" }).first().click();
   await expect(page.getByText(/Sztornózva a következővel/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Sztornózás" })).toBeHidden();
 
@@ -429,6 +429,73 @@ test("bizonylat: sztornó megerősítéssel, kölcsönös hivatkozás, szűrés"
   await page.getByLabel("Állapot").selectOption("sztornozott");
   await expect(page.getByRole("link", { name: "SZSZ-2026-00001" })).toBeVisible();
   await expect(page.getByRole("link", { name: "BANK-2026-00001" })).toBeHidden();
+});
+
+test("analitika: utólagos párosítás, kiegyenlítés rögzítéskor, egyeztetés, banknapló", async ({ page }) => {
+  await login(page);
+  const invoice = async (ext: string, gross: string) => {
+    await page.goto("/konyveles/uj?tipus=SZSZ");
+    const partner = page.getByRole("combobox", { name: "Partner" });
+    await partner.fill("iroda");
+    await partner.press("Enter");
+    await page.getByLabel("A szállító számlaszáma").fill(ext);
+    await page.getByLabel("A gazdasági művelet leírása").fill(`Bérleti díj ${ext}`);
+    await page.keyboard.press("Alt+l");
+    const tpl = page.getByRole("dialog", { name: "Kontírozási sablon" });
+    await tpl.getByRole("combobox", { name: "Sablon keresése" }).press("Enter");
+    await tpl.getByRole("textbox", { name: "Bruttó összeg (Ft)" }).fill(gross);
+    await tpl.getByRole("textbox", { name: "Bruttó összeg (Ft)" }).press("Enter");
+    await page.getByLabel("A gazdasági művelet leírása").press("Control+Enter");
+    await page.getByRole("dialog", { name: "Előnézet – könyvelés előtt" }).getByRole("button", { name: "Könyvelés" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: /^SZSZ-2026-/ })).toBeVisible();
+  };
+
+  // A BANK-2026-00001 (127 000) az előző tesztben sztornózott számlához tartozott: párosítatlan fizetés.
+  await invoice("IR-2026/0050", "50800");
+  await page.getByRole("link", { name: "Irodaszer Kft." }).click();
+  const openSection = page.getByRole("region", { name: /Nyitott tételek/ });
+  await expect(openSection.getByRole("cell", { name: "IR-2026/0050" })).toBeVisible();
+  await expectAccessible(page, "Partner nyitott tételei");
+  await openSection.getByRole("button", { name: "Párosítás: BANK-2026-00001" }).click();
+  const pair = page.getByRole("dialog", { name: "Fizetés párosítása" });
+  await expect(pair.getByRole("textbox", { name: "Összeg (Ft)" })).toHaveValue(amount("50 800"));
+  await pair.getByRole("button", { name: "Párosítás" }).click();
+  await expect(page.getByRole("status").getByText("A párosítás megtörtént.")).toBeVisible();
+  await expect(openSection.getByRole("cell", { name: "IR-2026/0050" })).toBeHidden();
+
+  // Kiegyenlítés rögzítéskor: a kijelölt tételből a sorok is kitöltődnek.
+  await invoice("IR-2026/0051", "25400");
+  await page.keyboard.press("F2");
+  await page.getByLabel("Bizonylat típusa").selectOption("BANK");
+  const partner = page.getByRole("combobox", { name: "Partner" });
+  await partner.fill("iroda");
+  await partner.press("Enter");
+  await page.getByLabel("A gazdasági művelet leírása").fill("Kifizetés IR-2026/0051");
+  await page.getByRole("checkbox", { name: /IR-2026\/0051.*kiegyenlítése/ }).check();
+  await expect(page.getByRole("combobox", { name: "1. sor: számla" })).toHaveValue("454 – Szállítók");
+  await expect(page.getByRole("textbox", { name: "1. sor: tartozik összeg" })).toHaveValue(amount("25 400"));
+  await expect(page.getByRole("combobox", { name: "2. sor: számla" })).toHaveValue("3841 – OTP forint számla");
+  await expect(page.getByRole("textbox", { name: "2. sor: követel összeg" })).toHaveValue(amount("25 400"));
+  await expectAccessible(page, "Kiegyenlítés rögzítéskor");
+  await page.getByLabel("A gazdasági művelet leírása").press("Control+Enter");
+  await page.getByRole("dialog", { name: "Előnézet – könyvelés előtt" }).getByRole("button", { name: "Könyvelés" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "BANK-2026-00002" })).toBeVisible();
+  await expect(page.getByRole("region", { name: /Kiegyenlítés/ })).toContainText("Kiegyenlíti: SZSZ-2026-00003");
+
+  // Nyitott tételek, egyeztetés, banknapló.
+  await page.goto("/partnerek/nyitott-tetelek");
+  await expect(page.getByRole("heading", { level: 1, name: "Nyitott tételek" })).toBeVisible();
+  await expectAccessible(page, "Nyitott tételek");
+  await page.getByRole("navigation", { name: "Partnerek almenü" }).getByRole("link", { name: "Egyeztetés" }).click();
+  const row454 = page.getByRole("row").filter({ has: page.getByRole("cell", { name: /^454 Szállítók/ }) });
+  await expect(row454).toContainText("Egyezik");
+  await expectAccessible(page, "Egyeztetés");
+  await page.goto("/konyveles/penzeszkozok");
+  await page.getByLabel("Számla").selectOption({ label: "3841 – OTP forint számla (bank)" });
+  await expect(page.getByRole("link", { name: "BANK-2026-00002" })).toBeVisible();
+  await page.getByLabel(/A kivonat záró egyenlege/).fill("-152400");
+  await expect(page.getByText("A könyvelt egyenleg egyezik a kivonattal.")).toBeVisible();
+  await expectAccessible(page, "Banknapló");
 });
 
 test("mobil nézet: nincs vízszintes görgetés, a menü elérhető", async ({ page }) => {

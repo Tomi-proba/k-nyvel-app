@@ -20,6 +20,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "document.delete": "Bizonylat-piszkozat törlése",
   "document.post": "Bizonylat könyvelése",
   "document.reverse": "Bizonylat sztornózása",
+  "settlement.create": "Tételek párosítása (kiegyenlítés)",
+  "settlement.delete": "Párosítás bontása",
   "templates.load_default": "Alapértelmezett kontírozási sablonok betöltése",
   "template.create": "Kontírozási sablon létrehozása",
   "template.update": "Kontírozási sablon módosítása",

@@ -122,14 +122,14 @@ Jelölés: PK = elsődleges kulcs, FK = idegen kulcs. Minden táblában van `cre
 
 ### 4.6 Analitika: vevők, szállítók, nyitott tételek
 
-- **open_items**: partner_id, kind (`RECEIVABLE` | `PAYABLE`), origin_line_id (a 311/454 soron keletkezik), document_id, invoice_number, due_date, original_amount, currency, fx_amount, status (`OPEN` | `PARTIAL` | `SETTLED` | `WRITTEN_OFF`).
-- **settlements**: open_item_id, settling_line_id (banki, pénztári, beszámítási vagy leírási tétel sora), amount, settled_at. A nyitott egyenleg = eredeti összeg − kiegyenlítések; mindig számolt érték, nincs külön tárolva (K 4.4).
+- **Nyitott tétel** (nem külön tábla): a könyvelt, vevőanalitikás számlán tartozik, szállítóanalitikás számlán követel oldali tételsor; az ellenkező oldali sor kiegyenlítő tétel (fizetés, jóváírás, beszámítás, leírás). A sztornó bizonylat sorai nem nyitott tételek: a rendszer az eredeti sorokkal automatikusan párosítja őket, az eredeti korábbi párosításai pedig felbomlanak.
+- **settlements**: item_line_id, settling_line_id, amount, source (`ENTRY` rögzítéskor kijelölve | `MANUAL` utólagos párosítás | `REVERSAL` sztornó, nem bontható). Adatbázis-trigger ellenőrzi: csak könyvelt, azonos számlán és partneren lévő sorok, és egyik sor sem párosítható az összegénél többször. A párosítás a két bizonylat későbbi könyvelési napján számít (fordulónapi analitikához). A nyitott egyenleg = eredeti összeg − kiegyenlítések; mindig számolt érték, nincs külön tárolva (K 4.4).
 - Egyeztetés: analitika összesen = főkönyvi egyenleg (311, 454 stb.) bármely napra; évzáráskor kötelező ellenőrzés (K 4.2).
 - Kimutatások: nyitott tételek listája, korosítás (lejárt 0–30, 31–60, 61–90, 90+ nap), partnerkarton, egyenlegközlő levél (PDF).
 
 ### 4.7 Bank és pénztár
 
-- **bank_accounts**: account_id (384x), bank_name, account_number/IBAN, currency.
+- A bank és a pénztár a BANK, illetve CASH analitikájú főkönyvi számla (pl. 3841, 381); külön törzstábla az MVP-ben nem kell. Bank- és pénztárnapló futó egyenleggel, bankkivonat-egyeztetés (záró egyenleg beírásával).
 - **bank_statements**: bank_account_id, statement_number, statement_date, opening_balance, closing_balance, document_id. A kivonat maga a bizonylat; a nyitó egyenlegnek egyeznie kell az előző kivonat záró egyenlegével, a záró egyenlegnek pedig a sorok összegével.
 - **cash_registers**: account_id (381x), name, daily_close_limit (a pénzkezelési szabályzatból, K 1.10). Pénztárbizonylat (`PB`, `PK`) pénztáranként külön, hézagmentes sorszámmal. Negatív pénztáregyenleg nem engedett; limit-túllépésnél figyelmeztetés. Pénztárjelentés napra/időszakra.
 - Bank- és pénztársor rögzítésekor a partner nyitott tételei felajánlódnak kiegyenlítésre (egy kattintás vagy Enter).

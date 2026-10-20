@@ -35,6 +35,8 @@ export type CompanyDto = {
   fxRateSource: (typeof FX_RATE_SOURCES)[number];
   /** A sztornó módja: fordított oldalon vagy negatív előjellel. */
   reversalMethod: "SWAP" | "NEGATIVE";
+  /** A pénzkezelési szabályzat szerinti napi pénztár-záróegyenleg maximuma (fillér). */
+  cashClosingLimit: number | null;
   createdAt: string;
 };
 

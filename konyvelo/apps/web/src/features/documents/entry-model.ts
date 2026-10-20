@@ -9,11 +9,12 @@ import {
   splitByVat,
   todayIso,
   validateForPosting,
+  validateSettlementPlan,
   type DocumentType,
   type LineSide,
   type TemplateLine,
 } from "@konyvelo/domain";
-import type { AccountDto, DocumentDto, DocumentInput, PartnerDto } from "@konyvelo/shared";
+import type { AccountDto, DocumentDto, DocumentInput, OpenItemDto, PartnerDto } from "@konyvelo/shared";
 import { amountFromText, amountText } from "../../ui/AmountInput";
 
 /** A rögzítő űrlap állapota (a felület szövegként tárolja az összegeket, ahogy a felhasználó beírta). */
@@ -40,7 +41,9 @@ export type Header = {
   templateId: string | null;
 };
 
-export type EntryState = { header: Header; rows: Row[] };
+/** Kiegyenlítendő nyitott tétel a bizonylaton (az összeg szövegként, ahogy beírták). */
+export type PlanRow = { itemLineId: string; amount: string };
+export type EntryState = { header: Header; rows: Row[]; plan: PlanRow[] };
 
 let rowSeq = 0;
 export const newRow = (over: Partial<Row> = {}): Row => ({ key: `r${++rowSeq}`, accountId: null, debit: "", credit: "", description: "", ...over });
@@ -77,7 +80,7 @@ export function defaultDate(fy: { startDate: string; endDate: string } | null): 
 
 export function newEntry(fy: { startDate: string; endDate: string } | null, docType: DocumentType | ""): EntryState {
   const d = defaultDate(fy);
-  return { header: emptyHeader({ docType, issueDate: d, accountingDate: d }), rows: [newRow(), newRow()] };
+  return { header: emptyHeader({ docType, issueDate: d, fulfillmentDate: d, accountingDate: d }), rows: [newRow(), newRow()], plan: [] };
 }
 
 const rowsFromLines = (lines: DocumentDto["lines"]): Row[] =>
@@ -117,6 +120,7 @@ export function entryFromDocument(doc: DocumentDto, mode: "edit" | "copy" | "cor
         templateId: doc.templateId,
       }),
       rows: rows.length >= 2 ? rows : [...rows, ...Array.from({ length: 2 - rows.length }, () => newRow())],
+      plan: doc.settlementPlan.map((p) => ({ itemLineId: p.itemLineId, amount: amountText(p.amount) })),
     };
   }
   const base = newEntry(fy, mode === "correct" ? "HELY" : doc.docType === "SZT" ? "" : doc.docType);
@@ -181,10 +185,14 @@ export function prepare(state: EntryState) {
     correctsDocumentId: h.correctsDocumentId,
     templateId: h.templateId,
     lines: lines.map(({ key: _k, ...l }) => l),
+    settlements: state.plan.map((p) => ({ itemLineId: p.itemLineId, amount: amountFromText(p.amount) ?? 0 })),
   };
   const fieldErrors: Record<string, string> = {};
   if (h.currency !== "HUF" && fxAmount === undefined) fieldErrors.fxAmount = "Érvénytelen devizaösszeg.";
   if (h.fxRate.trim() && (fxRateNum == null || !Number.isFinite(fxRateNum))) fieldErrors.fxRate = "Érvénytelen árfolyam (pl. 395,12).";
+  state.plan.forEach((p, i) => {
+    if (amountFromText(p.amount) === undefined) fieldErrors[`settlements.${i}`] = "Érvénytelen összeg.";
+  });
   return { payload, lines, rowKeys: lines.map((l) => l.key), amountErrors, fieldErrors, balance: documentBalance(lines) };
 }
 
@@ -199,8 +207,21 @@ export function mapLineErrors(errors: Record<string, string>, rowKeys: readonly 
   return out;
 }
 
-export function validateEntry(state: EntryState, accounts: ReadonlyMap<string, AccountDto>) {
+export function validateEntry(state: EntryState, accounts: ReadonlyMap<string, AccountDto>, openItems?: ReadonlyMap<string, OpenItemDto>) {
   const p = prepare(state);
+  const planErrors =
+    openItems && state.plan.length
+      ? validateSettlementPlan(
+          p.payload.settlements ?? [],
+          p.lines,
+          (id) => {
+            const i = openItems.get(id);
+            return i && { lineId: i.lineId, accountId: i.accountId, accountNumber: i.accountNumber, partnerId: i.partnerId, open: i.open, label: i.serialNumber ?? "" };
+          },
+          (id) => accounts.get(id)?.subledger,
+          state.header.partnerId,
+        )
+      : {};
   const errors = mapLineErrors(
     validateForPosting(
       {
@@ -226,7 +247,7 @@ export function validateEntry(state: EntryState, accounts: ReadonlyMap<string, A
     const a = l.accountId ? accounts.get(l.accountId) : undefined;
     if (a?.hasChildren) errors[`line:${l.key}:accountId`] = `A(z) ${a.number} gyűjtőszámla; válasszon alszámlát.`;
   });
-  return { ...p, errors: { ...errors, ...p.amountErrors, ...p.fieldErrors } };
+  return { ...p, errors: { ...errors, ...planErrors, ...p.amountErrors, ...p.fieldErrors } };
 }
 
 /** Rögzítési határidő a bizonylat adatai alapján (ha a dátumok már megvannak). */
@@ -316,7 +337,41 @@ export function withTemplate(state: EntryState, t: ApplicableTemplate, amount: n
       templateId: t.id,
     },
     rows: [...rows, newRow()],
+    plan: state.plan,
   };
+}
+
+/**
+ * A kiválasztott nyitott tételekből a tételsorok: számlánként egy
+ * kiegyenlítő sor (szállítónál tartozik, vevőnél követel), és – bank- vagy
+ * pénztárbizonylatnál – az ellenoldali pénzeszközsor.
+ */
+export function rowsFromPlan(state: EntryState, items: ReadonlyMap<string, OpenItemDto>, accounts: readonly AccountDto[]): Row[] {
+  const perAccount = new Map<string, { kind: OpenItemDto["kind"]; sum: number }>();
+  for (const p of state.plan) {
+    const it = items.get(p.itemLineId);
+    const a = amountFromText(p.amount);
+    if (!it || typeof a !== "number") continue;
+    const cur = perAccount.get(it.accountId) ?? { kind: it.kind, sum: 0 };
+    cur.sum += a;
+    perAccount.set(it.accountId, cur);
+  }
+  const rows: Row[] = [];
+  let net = 0; // pénzeszköz-hatás: + bevétel, − kiadás
+  for (const [accountId, { kind, sum }] of perAccount) {
+    if (kind === "PAYABLE") {
+      rows.push(newRow({ accountId, debit: amountText(sum) }));
+      net -= sum;
+    } else {
+      rows.push(newRow({ accountId, credit: amountText(sum) }));
+      net += sum;
+    }
+  }
+  const t = state.header.docType;
+  const sub = t === "BANK" ? "BANK" : t === "PB" || t === "PK" ? "CASH" : null;
+  const money = sub ? accounts.find((a) => a.subledger === sub && a.isActive && !a.hasChildren) : undefined;
+  if (money && net !== 0) rows.push(newRow({ accountId: money.id, debit: net > 0 ? amountText(net) : "", credit: net < 0 ? amountText(-net) : "" }));
+  return [...rows, newRow()];
 }
 
 /** Fizetési határidő a partner fizetési feltétele szerint (számláknál), ha kiszámítható. */
@@ -328,6 +383,8 @@ export function suggestedDueDate(h: Header, p: PartnerDto | undefined | null): s
 /** Partner választásakor: a fizetési határidő a partner fizetési feltételéből, ha a felhasználó nem adta meg kézzel. */
 export function withPartner(state: EntryState, p: PartnerDto | null, dueDateTouched: boolean): EntryState {
   const h = { ...state.header, partnerId: p?.id ?? null };
+  // Másik partner tételei nem egyenlíthetők ki.
+  if (h.partnerId !== state.header.partnerId) state = { ...state, plan: [] };
   const due = dueDateTouched ? null : suggestedDueDate(h, p);
   return { ...state, header: { ...h, dueDate: due ?? h.dueDate } };
 }

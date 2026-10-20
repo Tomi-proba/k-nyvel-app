@@ -6,7 +6,8 @@ import { DOCUMENT_TYPES, formatHuf } from "@konyvelo/domain";
 import { FX_RATE_SOURCE_LABELS, type CompanyDto, type DocumentDto, type DocumentRef } from "@konyvelo/shared";
 import { NEW_ENTRY_PATH } from "../../app/AppLayout";
 import { useWorkspace } from "../../app/workspace";
-import { ApiError, get, post } from "../../lib/api";
+import { ApiError, del, get, post } from "../../lib/api";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { fiscalYearLabel, formatDateHu, formatDateTimeHu } from "../../lib/format";
 import { DateInput } from "../../ui/DateInput";
 import { Field } from "../../ui/Field";
@@ -198,6 +199,29 @@ export function DocumentView({ doc }: { doc: DocumentDto }) {
         </section>
       </div>
 
+      {doc.settlements.length > 0 && (
+        <section className="card" aria-labelledby="kiegyenlitesek">
+          <h2 id="kiegyenlitesek">
+            Kiegyenlítés <HelpTip term="kiegyenlites" />
+          </h2>
+          <ul className="plain-list stack">
+            {doc.settlements.map((s) => (
+              <li key={s.id} className="row">
+                <span>
+                  {s.role === "ITEM" ? "Kiegyenlítette:" : "Kiegyenlíti:"}{" "}
+                  <Link to={`/konyveles/${s.otherDocumentId}`} className="mono">
+                    {s.otherSerialNumber}
+                  </Link>
+                  {s.otherExternalNumber && <span className="muted"> ({s.otherExternalNumber})</span>} – <strong>{formatHuf(s.amount)}</strong>
+                  {s.source === "REVERSAL" && <span className="muted"> (sztornó)</span>}
+                </span>
+                {canPost && s.source !== "REVERSAL" && <UnpairButton id={s.id} />}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="card" aria-labelledby="kontirozas">
         <h2 id="kontirozas">Kontírozás</h2>
         <div className="table-wrap">
@@ -247,6 +271,35 @@ export function DocumentView({ doc }: { doc: DocumentDto }) {
         </div>
       </section>
     </>
+  );
+}
+
+/** Párosítás bontása (a könyvelést nem érinti; a tétel újra nyitott lesz). */
+function UnpairButton({ id }: { id: string }) {
+  const ws = useWorkspace();
+  const toast = useToast();
+  const invalidate = useInvalidateDocuments();
+  return (
+    <ConfirmDialog
+      danger={false}
+      trigger={
+        <button type="button" className="btn btn-small">
+          Párosítás bontása
+        </button>
+      }
+      title="Párosítás bontása"
+      description={<p>A tétel újra nyitott, a fizetés újra párosítatlan lesz. A könyvelést nem változtatja meg; a bontás az audit naplóba kerül.</p>}
+      confirmLabel="Bontás"
+      onConfirm={async () => {
+        try {
+          await del(`/api/companies/${ws.company!.id}/settlements/${id}`);
+          await invalidate();
+          toast("success", "A párosítás bontva.");
+        } catch (err) {
+          toast("error", err instanceof Error ? err.message : "Váratlan hiba történt.");
+        }
+      }}
+    />
   );
 }
 
