@@ -13,8 +13,9 @@ export default defineConfig({
     // és a Codespace saját (…app.github.dev) címét is elfogadjuk.
     host: codespace ? "0.0.0.0" : undefined,
     allowedHosts: codespace ? true : undefined,
-    // Fejlesztéskor az /api kéréseket a Fastify szerver kapja.
-    proxy: { "/api": "http://127.0.0.1:3000" },
+    // Fejlesztéskor az /api kéréseket a Fastify szerver kapja. Az eredeti Host fejléc
+    // megmarad, így az API Origin-ellenőrzése bármilyen címen (pl. Codespace) működik.
+    proxy: { "/api": { target: "http://127.0.0.1:3000", changeOrigin: false } },
   },
   build: { sourcemap: true },
 });
