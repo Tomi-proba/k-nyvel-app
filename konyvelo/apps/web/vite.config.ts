@@ -1,8 +1,9 @@
+import { existsSync } from "node:fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-/** GitHub Codespaces alatt fut-e (ott a porttovábbítás a 127.0.0.1-re csatlakozik). */
-const codespace = Boolean(process.env.CODESPACES || process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN);
+/** Konténerben (pl. GitHub Codespaces) fut-e: ott a porttovábbítás kívülről, a 127.0.0.1-re csatlakozik. */
+const codespace = Boolean(process.env.CODESPACES || process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN || existsSync("/.dockerenv"));
 
 export default defineConfig({
   plugins: [react()],
