@@ -66,6 +66,8 @@ export function EntryForm({ initial, draftId, reference }: { initial: EntryState
     dueDate: Boolean(draftId),
   });
   const [attempted, setAttempted] = useState(false);
+  /** Könyvelési kísérletek száma: minden kísérletnél a hibaösszesítő újra fókuszt kap. */
+  const [attempts, setAttempts] = useState(0);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -201,6 +203,7 @@ export function EntryForm({ initial, draftId, reference }: { initial: EntryState
 
   const openPreview = () => {
     setAttempted(true);
+    setAttempts((n) => n + 1);
     if (Object.keys(v.errors).length > 0) {
       setFormError("A bizonylat még nem könyvelhető. Kérjük, javítsa a megjelölt hibákat.");
       return;
@@ -307,7 +310,7 @@ export function EntryForm({ initial, draftId, reference }: { initial: EntryState
         }}
       >
         {(formError || (attempted && Object.keys(errors).length > 0)) && (
-          <ErrorSummary message={formError ?? "A bizonylat még nem könyvelhető. Kérjük, javítsa a megjelölt hibákat."} fields={errors} />
+          <ErrorSummary message={formError ?? "A bizonylat még nem könyvelhető. Kérjük, javítsa a megjelölt hibákat."} fields={errors} attempt={attempts} />
         )}
 
         <section className="card stack" aria-labelledby="fejadatok">

@@ -62,21 +62,19 @@ export function Field({
   );
 }
 
-/** Űrlap tetején megjelenő hibaösszesítő (fókuszt kap, a képernyőolvasó felolvassa). */
-export function ErrorSummary({ message, fields }: { message?: string | null; fields?: Record<string, string> }) {
+/**
+ * Űrlap tetején megjelenő hibaösszesítő (fókuszt kap, a képernyőolvasó felolvassa).
+ * Csak megjelenéskor, új üzenetnél vagy új mentési kísérletnél (`attempt`) kap fókuszt;
+ * a mezőnkénti hibák változása (javítás, gépelés) közben a kurzor a mezőben marad.
+ */
+export function ErrorSummary({ message, fields, attempt }: { message?: string | null; fields?: Record<string, string>; attempt?: number }) {
   const items = fields ? Object.values(fields) : [];
   const ref = useRef<HTMLDivElement>(null);
-  const shown = useRef<{ message: string; items: string[] }>({ message: "", items: [] });
-  const key = `${message ?? ""}|${items.join("|")}`;
+  const visible = Boolean(message) || items.length > 0;
   useEffect(() => {
-    // Csak új hiba esetén kapjon fókuszt. Ha egy hiba a javítás (gépelés) miatt
-    // eltűnik a listából, a kurzor maradjon a mezőben.
-    const prev = shown.current;
-    const isNew = (message ?? "") !== prev.message || items.some((m) => !prev.items.includes(m));
-    shown.current = { message: message ?? "", items };
-    if (isNew && key !== "|") ref.current?.focus();
+    if (visible) ref.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [message, attempt]);
   if (!message && items.length === 0) return null;
   return (
     <div className="alert alert-error" role="alert" tabIndex={-1} ref={ref}>

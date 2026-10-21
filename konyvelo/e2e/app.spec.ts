@@ -344,6 +344,14 @@ test("bizonylat: hibás mentés után a mezőbe gépelve a kurzor a mezőben mar
   await page.keyboard.type("Posta");
   await expect(description).toBeFocused();
   await expect(description).toHaveValue("Posta");
+  // Az összegmezőkben is: gépelés közben változik az eltérés üzenete, a kurzor mégis marad.
+  const debit = page.getByLabel("1. sor: tartozik összeg");
+  await debit.click();
+  await page.keyboard.type("32000");
+  await expect(debit).toBeFocused();
+  // Új könyvelési kísérletnél a hibaösszesítő ismét fókuszt kap.
+  await page.getByRole("button", { name: "Előnézet és könyvelés" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "A bizonylat még nem könyvelhető." })).toBeFocused();
 });
 
 test("bizonylat: piszkozat billentyűzetes sorrögzítéssel, Teendők, banki kifizetés könyvelése", async ({ page }) => {
