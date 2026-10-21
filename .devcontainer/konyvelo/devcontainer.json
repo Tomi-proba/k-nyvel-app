@@ -1,0 +1,16 @@
+{
+  "name": "Könyvelő (konyvelo/)",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/konyvelo",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": { "label": "Könyvelő", "onAutoForward": "openBrowser" },
+    "3000": { "label": "Könyvelő API", "onAutoForward": "silent" }
+  },
+  "otherPortsAttributes": { "onAutoForward": "silent" },
+  "postCreateCommand": "bash scripts/codespace-setup.sh",
+  "postAttachCommand": "npm run dev",
+  "hostRequirements": { "cpus": 2 }
+}

@@ -30,6 +30,22 @@ apps/web          React + Vite felület
 e2e               Playwright böngészős tesztek akadálymentességi (axe) ellenőrzéssel
 ```
 
+## Kipróbálás a böngészőben, telepítés nélkül (GitHub Codespaces)
+
+1. Jelentkezzen be a GitHubra, majd nyissa meg ezt a linket:
+   **https://codespaces.new/tomi-proba/k-nyvel-app/tree/claude/adoring-gates-qkf0a7?devcontainer_path=.devcontainer%2Fkonyvelo%2Fdevcontainer.json**
+   A megjelenő oldalon ellenőrizze: *Branch*: `claude/adoring-gates-qkf0a7`, *Dev container configuration*: **Könyvelő (konyvelo/)** – majd **Create codespace**.
+   (Ha a link nem működik: a repó oldalán zöld **Code** gomb → **Codespaces** fül → **…** → **New with options…**, és ott válassza ki a fenti ágat és konfigurációt.)
+2. Az első indítás 3–5 perc: a böngészőben megnyíló fejlesztőkörnyezet telepíti a csomagokat, létrehozza az adatbázist, majd elindítja a programot (alul, a *Terminal* panelen látszik).
+3. Amikor a terminálban megjelenik a `Local: http://localhost:5173/` sor, a program magától megnyílik egy új böngészőlapon. Ha nem nyílik meg (felugró ablak tiltva): alul a **Ports** fülön a **5173 – Könyvelő** sorban kattintson a földgömb ikonra.
+4. Onnantól a fenti **Kipróbálható forgatókönyv** szerint haladhat (Első indítás → cég → üzleti év …).
+
+Jó tudni:
+- A program címe privát: csak Ön éri el a saját GitHub-fiókjával.
+- Az adatok a Codespace-ben megmaradnak, amíg a Codespace-t nem törli. Leállítani nem kell: 30 perc tétlenség után magától leáll, újra megnyitva (github.com/codespaces) folytatható – ilyenkor a terminálban `npm run dev` indítja újra a programot, ha nem indulna el magától.
+- A személyes GitHub-fiókoknak havi ingyenes Codespaces-kerete van; ha végzett a próbával, a github.com/codespaces oldalon törölheti a Codespace-t.
+- Ez próbakörnyezet, valódi cégadatokat ne vigyen fel.
+
 ## Telepítés (fejlesztői gép)
 
 > **Windowson, kezdőknek:** lépésről lépésre: [docs/TELEPITES-WINDOWS.md](docs/TELEPITES-WINDOWS.md)

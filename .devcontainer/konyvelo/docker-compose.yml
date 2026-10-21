@@ -1,0 +1,21 @@
+# GitHub Codespaces a konyvelo/ projekthez: alkalmazás-konténer (Node 22) és PostgreSQL 16.
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm
+    volumes:
+      - ../../..:/workspaces:cached
+    command: sleep infinity
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - konyvelo-pg-data:/var/lib/postgresql/data
+
+volumes:
+  konyvelo-pg-data:

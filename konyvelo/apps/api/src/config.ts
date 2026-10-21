@@ -16,6 +16,8 @@ export type Config = {
   webDistDir: string | null;
   trustProxy: boolean;
   logLevel: string;
+  /** További engedélyezett Origin-címek a CSRF-ellenőrzéshez (pl. a Codespace címe). */
+  allowedOrigins: string[];
 };
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -37,5 +39,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webDistDir: env.WEB_DIST_DIR ?? defaultWebDist,
     trustProxy: env.TRUST_PROXY === "true",
     logLevel: env.LOG_LEVEL ?? (production ? "info" : "warn"),
+    allowedOrigins: (env.ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((s) => s.trim().replace(/\/$/, ""))
+      .filter(Boolean),
   };
 }

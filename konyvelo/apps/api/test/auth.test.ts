@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CSRF_HEADER } from "@konyvelo/shared";
+import { buildApp } from "../src/app";
+import { loadConfig } from "../src/config";
 import { Client, PASSWORD, appQuery, createTestApp, login, resetDatabase, setupAdmin, type TestContext } from "./helpers";
 
 let ctx: TestContext;
@@ -73,6 +75,16 @@ describe("első indítás és belépés", () => {
       payload: { email: "admin@example.hu", password: PASSWORD },
     });
     expect(res.statusCode).toBe(403);
+  });
+
+  it("az ALLOWED_ORIGINS-ban megadott cím (pl. Codespace) engedélyezett, más továbbra sem", async () => {
+    const config = { ...loadConfig({ DATABASE_URL: "postgres://x", LOG_LEVEL: "silent", ALLOWED_ORIGINS: "https://proba-5173.app.github.dev/" }), webDistDir: null };
+    const app = await buildApp(config, ctx.db);
+    const send = (origin: string) =>
+      app.inject({ method: "POST", url: "/api/auth/login", headers: { [CSRF_HEADER]: "1", origin, host: "localhost:5173" }, payload: { email: "nincs@example.hu", password: "rossz-jelszo-1234" } });
+    expect((await send("https://proba-5173.app.github.dev")).statusCode).toBe(401);
+    expect((await send("https://masik-5173.app.github.dev")).statusCode).toBe(403);
+    await app.close();
   });
 });
 

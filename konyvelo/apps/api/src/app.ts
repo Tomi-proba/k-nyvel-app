@@ -73,7 +73,7 @@ export async function buildApp(config: Config, db: Db): Promise<FastifyInstance>
         throw new AppError(403, "CSRF", "A kérés biztonsági ellenőrzése sikertelen. Kérjük, frissítse az oldalt.");
       }
       const origin = request.headers.origin;
-      if (origin && originHost(origin) !== request.headers.host) {
+      if (origin && originHost(origin) !== request.headers.host && !config.allowedOrigins.includes(origin)) {
         throw new AppError(403, "CSRF", "A kérés más webhelyről érkezett, ezért elutasítottuk.");
       }
     }
