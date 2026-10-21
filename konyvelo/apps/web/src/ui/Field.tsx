@@ -66,10 +66,16 @@ export function Field({
 export function ErrorSummary({ message, fields }: { message?: string | null; fields?: Record<string, string> }) {
   const items = fields ? Object.values(fields) : [];
   const ref = useRef<HTMLDivElement>(null);
+  const shown = useRef<{ message: string; items: string[] }>({ message: "", items: [] });
   const key = `${message ?? ""}|${items.join("|")}`;
   useEffect(() => {
-    // Csak új hiba esetén kapjon fókuszt (gépelés közben ne ugorjon el).
-    if (key !== "|") ref.current?.focus();
+    // Csak új hiba esetén kapjon fókuszt. Ha egy hiba a javítás (gépelés) miatt
+    // eltűnik a listából, a kurzor maradjon a mezőben.
+    const prev = shown.current;
+    const isNew = (message ?? "") !== prev.message || items.some((m) => !prev.items.includes(m));
+    shown.current = { message: message ?? "", items };
+    if (isNew && key !== "|") ref.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   if (!message && items.length === 0) return null;
   return (

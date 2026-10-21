@@ -29,9 +29,17 @@ export async function api<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: 
   }
 
   const text = await res.text();
-  const data = text ? (JSON.parse(text) as unknown) : null;
+  let data: unknown = null;
+  try {
+    data = text ? (JSON.parse(text) as unknown) : null;
+  } catch {
+    // Nem a programunk válaszolt (pl. leállt vagy újraindul a szerver, és a proxy HTML hibaoldalt ad).
+  }
   if (!res.ok) {
     const err = (data as { error?: ApiErrorBody } | null)?.error;
+    if (!err && res.status >= 500) {
+      throw new ApiError(res.status, "UNAVAILABLE", "A szerver most nem érhető el (lehet, hogy újraindul). Várjon egy kicsit, majd frissítse az oldalt.");
+    }
     throw new ApiError(res.status, err?.code ?? "UNKNOWN", err?.message ?? "Váratlan hiba történt.", err?.fields ?? {});
   }
   return data as T;

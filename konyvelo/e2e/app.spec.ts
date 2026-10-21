@@ -334,6 +334,18 @@ test("bizonylat: szállítói számla sablonnal, egyensúly-ellenőrzés, előn�
   await expectAccessible(page, "Könyvelt bizonylat");
 });
 
+test("bizonylat: hibás mentés után a mezőbe gépelve a kurzor a mezőben marad", async ({ page }) => {
+  await login(page);
+  await page.keyboard.press("Alt+n");
+  await page.getByRole("button", { name: "Előnézet és könyvelés" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "A bizonylat még nem könyvelhető." })).toBeFocused();
+  const description = page.getByLabel("A gazdasági művelet leírása");
+  await description.click();
+  await page.keyboard.type("Posta");
+  await expect(description).toBeFocused();
+  await expect(description).toHaveValue("Posta");
+});
+
 test("bizonylat: piszkozat billentyűzetes sorrögzítéssel, Teendők, banki kifizetés könyvelése", async ({ page }) => {
   await login(page);
   await page.keyboard.press("Alt+n");

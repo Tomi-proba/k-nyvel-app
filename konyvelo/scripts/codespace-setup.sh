@@ -24,4 +24,4 @@ done
 
 PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=postgres npm run db:setup
 npm run db:migrate
-echo "✓ Kész. A program indítása: npm run dev"
+echo "✓ Kész. A program a Codespace indulásakor magától elindul (napló: /tmp/konyvelo-dev.log)."

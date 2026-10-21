@@ -11,6 +11,6 @@
   },
   "otherPortsAttributes": { "onAutoForward": "silent" },
   "postCreateCommand": "bash scripts/codespace-setup.sh",
-  "postAttachCommand": "npm run dev",
+  "postStartCommand": "bash scripts/codespace-start.sh",
   "hostRequirements": { "cpus": 2 }
 }
