@@ -64,8 +64,15 @@ async function turnovers(db: Executor, companyId: string, where: ReturnType<type
   }));
 }
 
-async function incomeStatementFor(db: Executor, companyId: string, from: string, to: string) {
-  return buildIncomeStatement(await turnovers(db, companyId, sql`d.accounting_date BETWEEN ${from}::date AND ${to}::date`));
+/**
+ * Eredménykimutatás: az évzáráskor az eredményszámlákat nullázó záró
+ * bizonylat (ZAR) nélkül – különben a lezárt év eredménykimutatása üres lenne.
+ * A mérleghez a záró bizonylattal együtt számolunk (lásd balanceSheetFor).
+ */
+async function incomeStatementFor(db: Executor, companyId: string, from: string, to: string, withClosing = false) {
+  return buildIncomeStatement(
+    await turnovers(db, companyId, sql`d.accounting_date BETWEEN ${from}::date AND ${to}::date ${withClosing ? sql`` : sql`AND d.doc_type <> 'ZAR'`}`),
+  );
 }
 
 /** Mérleg egy fordulónapra: mérlegszámlák teljes egyenlege; tárgyévi és korábbi, még le nem zárt eredmény. */
@@ -73,7 +80,8 @@ async function balanceSheetFor(db: Executor, companyId: string, asOf: string) {
   const fy = await fiscalYearOf(db, companyId, asOf);
   const start = fy?.startDate ?? `${asOf.slice(0, 4)}-01-01`;
   const bsAccounts = await turnovers(db, companyId, sql`${IS_BS} AND d.accounting_date <= ${asOf}::date`);
-  const current = await incomeStatementFor(db, companyId, start, asOf);
+  // A lezárt év eredménye már a 419-en van (a záró bizonylat nullázta az eredményszámlákat).
+  const current = await incomeStatementFor(db, companyId, start, asOf, true);
   const prior = buildIncomeStatement(await turnovers(db, companyId, sql`d.accounting_date < ${start}::date`));
   return { ...buildBalanceSheet(bsAccounts, current.result, prior.result), isUnmapped: current.unmapped };
 }

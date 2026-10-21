@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { DOCUMENT_TYPES, formatDateHu, formatHuf, todayIso } from "@konyvelo/domain";
+import { addDays, DOCUMENT_TYPES, formatDateHu, formatHuf, todayIso } from "@konyvelo/domain";
 import { ROLE_LABELS } from "@konyvelo/shared";
 import { NEW_ENTRY_PATH } from "../../app/AppLayout";
 import { KeyCombo } from "../../app/shortcuts";
@@ -123,6 +123,17 @@ function TodoCard() {
       title: `Pénztár (${c.accountNumber}): a záróegyenleg meghaladta a maximumot`,
       detail: `Legutóbb ${formatDateHu(c.date)}: ${formatHuf(c.closing)} (maximum: ${formatHuf(c.limit)}, pénzkezelési szabályzat).`,
       tone: "warning",
+    });
+  }
+  // Lezárható havi időszakok: a már elmúlt, 15 napnál régebben véget ért, még nyitott hónapok.
+  const closable = (ws.fiscalYear?.periods ?? []).filter((p) => p.status === "OPEN" && addDays(p.endDate, 15) < today);
+  if (closable.length > 0 && ws.can("period:close")) {
+    items.push({
+      key: "periods",
+      to: "/zaras",
+      title: `${closable.length} elmúlt havi időszak még nyitott`,
+      detail: `Legrégebbi: ${periodLabel(closable[0]!)}. A lezárás után oda nem lehet könyvelni.`,
+      tone: "info",
     });
   }
   if (t.unmappedAccounts > 0) {

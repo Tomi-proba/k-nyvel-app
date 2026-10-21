@@ -14,7 +14,7 @@ import {
 } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";
 import { get } from "../../lib/api";
-import { csvAmount, downloadCsv } from "../../lib/csv";
+import { exportCsv, exportXlsx, ftValue, type ExportSpec } from "../../lib/report-export";
 import { formatDateHu } from "../../lib/format";
 import { AccountPicker } from "../../ui/AccountPicker";
 import { DateInput } from "../../ui/DateInput";
@@ -52,11 +52,36 @@ function useReport<T>(path: string | null) {
 
 const hu = (filler: number) => (filler === 0 ? "" : formatHuf(filler, { withUnit: false }));
 
-function Actions({ onCsv }: { onCsv: () => void }) {
+function Actions({ spec }: { spec: () => ExportSpec | null }) {
+  const [busy, setBusy] = useState(false);
   return (
     <div className="row no-print">
-      <button type="button" className="btn" onClick={onCsv}>
-        Letöltés (CSV, Excel)
+      <button
+        type="button"
+        className="btn"
+        disabled={busy}
+        onClick={async () => {
+          const sp = spec();
+          if (!sp) return;
+          setBusy(true);
+          try {
+            await exportXlsx(sp);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Excel (.xlsx)
+      </button>
+      <button
+        type="button"
+        className="btn"
+        onClick={() => {
+          const sp = spec();
+          if (sp) exportCsv(sp);
+        }}
+      >
+        CSV
       </button>
       <button type="button" className="btn" onClick={() => window.print()}>
         Nyomtatás / PDF
@@ -107,14 +132,34 @@ export function TrialBalancePage() {
   const q = useReport<TrialBalanceDto>(from && to ? `trial-balance?from=${from}&to=${to}` : null);
   const d = q.data;
   const cols = ["opening", "period", "cumulative", "closing"] as const;
-  const csv = () => {
-    if (!d) return;
-    downloadCsv(`fokonyvi-kivonat_${from}_${to}.csv`, [
-      ["Számla", "Megnevezés", "Nyitó T", "Nyitó K", "Időszaki T", "Időszaki K", "Halmozott T", "Halmozott K", "Záró T", "Záró K"],
-      ...d.rows.map((r) => [r.number, r.name, ...cols.flatMap((k) => [csvAmount(r[k].debit), csvAmount(r[k].credit)])]),
-      ...(d.unclosedPriorResult ? [["", "Korábbi évek le nem zárt eredménye", csvAmount(d.unclosedPriorResult.debit), csvAmount(d.unclosedPriorResult.credit), "", "", "", "", csvAmount(d.unclosedPriorResult.debit), csvAmount(d.unclosedPriorResult.credit)]] : []),
-      ["", "Összesen", ...cols.flatMap((k) => [csvAmount(d.totals[k].debit), csvAmount(d.totals[k].credit)])],
-    ]);
+  const spec = (): ExportSpec | null => {
+    if (!d) return null;
+    const pair = (x: { debit: number; credit: number }) => [ftValue(x.debit), ftValue(x.credit)];
+    return {
+      fileName: `fokonyvi-kivonat_${from}_${to}`,
+      title: "Főkönyvi kivonat",
+      company: d.company,
+      period: `${formatDateHu(d.from)} – ${formatDateHu(d.to)} · összegek Ft-ban`,
+      landscape: true,
+      columns: [
+        { header: "Számla", width: 10 },
+        { header: "Megnevezés", width: 40 },
+        ...["Nyitó", "Időszaki", "Halmozott", "Záró"].flatMap((h) => [
+          { header: `${h} T`, numeric: true, width: 15 },
+          { header: `${h} K`, numeric: true, width: 15 },
+        ]),
+      ],
+      rows: [
+        ...d.classTotals.flatMap((ct) => [
+          ...d.rows.filter((r) => r.accountClass === ct.accountClass).map((r) => ({ cells: [r.number, r.name, ...cols.flatMap((k) => pair(r[k]))] })),
+          { cells: [`${ct.accountClass}.`, `${ct.accountClass}. számlaosztály összesen`, ...cols.flatMap((k) => pair(ct[k]))], kind: "subtotal" as const },
+        ]),
+        ...(d.unclosedPriorResult
+          ? [{ cells: ["", "Korábbi évek le nem zárt eredménye", ...pair(d.unclosedPriorResult), 0, 0, 0, 0, ...pair(d.unclosedPriorResult)] }]
+          : []),
+        { cells: ["", "Összesen", ...cols.flatMap((k) => pair(d.totals[k]))], kind: "total" as const },
+      ],
+    };
   };
   const cells = (x: Record<(typeof cols)[number], { debit: number; credit: number }>) =>
     cols.flatMap((k) => [
@@ -130,7 +175,7 @@ export function TrialBalancePage() {
       <div className="toolbar no-print">
         <Field label="Időszak kezdete">{(p) => <DateInput controlProps={p} value={from} onChange={setFrom} />}</Field>
         <Field label="Időszak vége">{(p) => <DateInput controlProps={p} value={to} onChange={setTo} />}</Field>
-        <Actions onCsv={csv} />
+        <Actions spec={spec} />
       </div>
       {q.isLoading && <Loading />}
       {q.error && <ErrorBox error={q.error} />}
@@ -240,19 +285,34 @@ export function JournalPage() {
   const [to, setTo] = useState(def.to);
   const q = useReport<JournalDto>(from && to ? `journal?from=${from}&to=${to}` : null);
   const d = q.data;
-  const csv = () =>
-    d &&
-    downloadCsv(`naplofokonyv_${from}_${to}.csv`, [
-      ["Dátum", "Bizonylat", "Partner", "Szöveg", "Számla", "Számla neve", "Tartozik", "Követel"],
-      ...d.rows.map((r) => [formatDateHu(r.date), r.serialNumber, r.partnerName, r.description, r.accountNumber, r.accountName, csvAmount(r.debit), csvAmount(r.credit)]),
-      ["", "", "", "Összesen", "", "", csvAmount(d.totals.debit), csvAmount(d.totals.credit)],
-    ]);
+  const spec = (): ExportSpec | null =>
+    d ? {
+      fileName: `naplofokonyv_${from}_${to}`,
+      title: "Naplófőkönyv",
+      company: d.company,
+      period: `${formatDateHu(d.from)} – ${formatDateHu(d.to)} · összegek Ft-ban`,
+      landscape: true,
+      columns: [
+        { header: "Dátum", width: 12 },
+        { header: "Bizonylat", width: 18 },
+        { header: "Partner", width: 24 },
+        { header: "Szöveg", width: 36 },
+        { header: "Számla", width: 9 },
+        { header: "Számla neve", width: 30 },
+        { header: "Tartozik", numeric: true },
+        { header: "Követel", numeric: true },
+      ],
+      rows: [
+        ...d.rows.map((r) => ({ cells: [formatDateHu(r.date), r.serialNumber, r.partnerName, r.description, r.accountNumber, r.accountName, r.debit ? ftValue(r.debit) : null, r.credit ? ftValue(r.credit) : null] })),
+        { cells: ["", "", "", `Összesen (${d.rows.length} tétel)`, "", "", ftValue(d.totals.debit), ftValue(d.totals.credit)], kind: "total" as const },
+      ],
+    } : null;
   return (
     <Shell title="Naplófőkönyv" description="A könyvelt tételek időrendben, számlával, tartozik és követel oldallal (Szt. 169. § (1)).">
       <div className="toolbar no-print">
         <Field label="Időszak kezdete">{(p) => <DateInput controlProps={p} value={from} onChange={setFrom} />}</Field>
         <Field label="Időszak vége">{(p) => <DateInput controlProps={p} value={to} onChange={setTo} />}</Field>
-        <Actions onCsv={() => csv()} />
+        <Actions spec={spec} />
       </div>
       {q.isLoading && <Loading />}
       {q.error && <ErrorBox error={q.error} />}
@@ -327,14 +387,28 @@ export function LedgerPage() {
   const q = useReport<LedgerDto>((accountId || partnerId) && from && to ? `ledger?${params}` : null);
   const d = q.data;
   const subject = d ? [d.account && `${d.account.number} ${d.account.name}`, d.partner?.name].filter(Boolean).join(" · ") : "";
-  const csv = () =>
-    d &&
-    downloadCsv(`karton_${from}_${to}.csv`, [
-      ["Dátum", "Bizonylat", "Számla", "Partner", "Szöveg", "Tartozik", "Követel", "Egyenleg"],
-      ["", "", "", "", "Nyitó egyenleg", "", "", csvAmount(d.opening)],
-      ...d.rows.map((r) => [formatDateHu(r.date), r.serialNumber, r.accountNumber, r.partnerName, r.description, csvAmount(r.debit), csvAmount(r.credit), csvAmount(r.balance)]),
-      ["", "", "", "", "Záró egyenleg", csvAmount(d.totals.debit), csvAmount(d.totals.credit), csvAmount(d.closing)],
-    ]);
+  const spec = (): ExportSpec | null =>
+    d ? {
+      fileName: `karton_${from}_${to}`,
+      title: `Karton – ${subject}`,
+      company: d.company,
+      period: `${formatDateHu(d.from)} – ${formatDateHu(d.to)} · összegek Ft-ban`,
+      columns: [
+        { header: "Dátum", width: 12 },
+        { header: "Bizonylat", width: 18 },
+        { header: "Számla", width: 9 },
+        { header: "Partner", width: 24 },
+        { header: "Szöveg", width: 36 },
+        { header: "Tartozik", numeric: true },
+        { header: "Követel", numeric: true },
+        { header: "Egyenleg", numeric: true },
+      ],
+      rows: [
+        { cells: ["", "", "", "", "Nyitó egyenleg", null, null, ftValue(d.opening)], kind: "subtotal" as const },
+        ...d.rows.map((r) => ({ cells: [formatDateHu(r.date), r.serialNumber, r.accountNumber, r.partnerName, r.description, r.debit ? ftValue(r.debit) : null, r.credit ? ftValue(r.credit) : null, ftValue(r.balance)] })),
+        { cells: ["", "", "", "", "Forgalom és záró egyenleg", ftValue(d.totals.debit), ftValue(d.totals.credit), ftValue(d.closing)], kind: "total" as const },
+      ],
+    } : null;
   return (
     <Shell title="Karton" description="Egy számla vagy egy partner tételei futó egyenleggel (tartozik − követel).">
       <div className="toolbar no-print">
@@ -344,7 +418,7 @@ export function LedgerPage() {
         <Field label="Partner">{(p) => <PartnerPicker partners={partners.data ?? []} value={partnerId} onChange={(x) => setPartnerId(x?.id ?? null)} controlProps={p} />}</Field>
         <Field label="Időszak kezdete">{(p) => <DateInput controlProps={p} value={from} onChange={setFrom} />}</Field>
         <Field label="Időszak vége">{(p) => <DateInput controlProps={p} value={to} onChange={setTo} />}</Field>
-        <Actions onCsv={() => csv()} />
+        <Actions spec={spec} />
       </div>
       {!accountId && !partnerId && <p className="muted">Válasszon számlát vagy partnert (vagy mindkettőt, pl. 454 + egy szállító).</p>}
       {q.isLoading && <Loading />}
@@ -502,17 +576,32 @@ function StatementPage({ kind }: { kind: "BS" | "IS" }) {
   const path = kind === "BS" ? (to ? `balance-sheet?asOf=${to}` : null) : from && to ? `income-statement?from=${from}&to=${to}` : null;
   const q = useReport<StatementDto>(path);
   const d = q.data;
-  const csv = () =>
-    d &&
-    downloadCsv(`${kind === "BS" ? "merleg" : "eredmenykimutatas"}_${d.to}.csv`, [
-      [kind === "BS" ? "Mérleg (A változat)" : "Eredménykimutatás (összköltség-eljárás)", d.company.name, d.company.taxNumber],
-      [publication ? (d.company.audited ? "" : NOT_AUDITED_NOTICE) : INTERNAL_STATEMENT_HEADER],
-      ["Sor", "Megnevezés", "Előző év", "Tárgyév"],
-      ...d.lines
-        .filter((l) => detailed || l.simplified)
-        .map((l) => [l.code, l.label, l.previous === null ? "" : unit === "THOUSAND" ? toThousandHuf(l.previous) : csvAmount(l.previous), unit === "THOUSAND" ? toThousandHuf(l.value) : csvAmount(l.value)]),
-      [INTERNAL_STATEMENT_FOOTER],
-    ]);
+  const spec = (): ExportSpec | null => {
+    if (!d) return null;
+    const v = (x: number | null) => (x === null ? null : unit === "THOUSAND" ? toThousandHuf(x) : ftValue(x));
+    const rows: ExportSpec["rows"] = [];
+    for (const l of d.lines.filter((x) => detailed || x.simplified)) {
+      rows.push({ cells: [l.code, `${"   ".repeat(detailed ? l.depth : Math.min(l.depth, 1))}${l.label}`, v(l.previous), v(l.value)], kind: l.formula ? "total" : l.depth === 0 ? "subtotal" : undefined });
+      if (kind === "BS" && l.code === "C" && d.totals) rows.push({ cells: ["", "ESZKÖZÖK (AKTÍVÁK) ÖSSZESEN", v(d.totals.previousAssets), v(d.totals.assets)], kind: "total" });
+    }
+    if (kind === "BS" && d.totals) rows.push({ cells: ["", "FORRÁSOK (PASSZÍVÁK) ÖSSZESEN", v(d.totals.previousSources), v(d.totals.sources)], kind: "total" });
+    return {
+      fileName: `${kind === "BS" ? "merleg" : "eredmenykimutatas"}_${d.to}`,
+      title: kind === "BS" ? "Mérleg („A” változat)" : "Eredménykimutatás (összköltség-eljárással)",
+      company: d.company,
+      period: `${kind === "BS" ? `Fordulónap: ${formatDateHu(d.to)}` : `${formatDateHu(d.from)} – ${formatDateHu(d.to)}`} · adatok ${unit === "THOUSAND" ? "ezer Ft" : "Ft"}-ban`,
+      notice: publication ? (d.company.audited ? null : NOT_AUDITED_NOTICE) : INTERNAL_STATEMENT_HEADER,
+      footer: INTERNAL_STATEMENT_FOOTER,
+      signature: true,
+      columns: [
+        { header: "Sor", width: 9 },
+        { header: "Megnevezés", width: 58 },
+        { header: `Előző év${d.previous ? ` (${formatDateHu(d.previous.to)})` : ""}`, numeric: true, width: 18 },
+        { header: "Tárgyév", numeric: true, width: 18 },
+      ],
+      rows,
+    };
+  };
   const balanced = !d?.totals || d.totals.assets === d.totals.sources;
   return (
     <Shell
@@ -540,7 +629,7 @@ function StatementPage({ kind }: { kind: "BS" | "IS" }) {
         <label className="checkbox-row">
           <input type="checkbox" checked={publication} onChange={(e) => setPublication(e.target.checked)} /> Közzétételi példány
         </label>
-        <Actions onCsv={() => csv()} />
+        <Actions spec={spec} />
       </div>
       {publication && (
         <p className="muted small no-print">

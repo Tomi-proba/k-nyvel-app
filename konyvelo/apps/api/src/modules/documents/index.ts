@@ -373,7 +373,7 @@ function auditSummary(doc: Pick<DocRow, "docType" | "description" | "accountingD
  * cégenkénti hash-lánc következő eleme. A cégszintű zár sorba rendezi az
  * egyidejű könyveléseket (sorszám és lánc).
  */
-async function postDocument(tx: Tx, companyId: string, docId: string, user: AuthUser, ip: string, opts: { reversal?: boolean } = {}): Promise<DocRow> {
+export async function postDocument(tx: Tx, companyId: string, docId: string, user: AuthUser, ip: string, opts: { reversal?: boolean } = {}): Promise<DocRow> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"documents-post:" + companyId}, 0))`);
   const doc = await loadDoc(tx, companyId, docId, true);
   if (doc.status === "POSTED") throw conflict(`A bizonylat már könyvelve van (${doc.serialNumber}).`);
@@ -404,7 +404,10 @@ async function postDocument(tx: Tx, companyId: string, docId: string, user: Auth
   if (fy!.status === "CLOSED") {
     errors.accountingDate = "Az üzleti év lezárt, ide nem lehet könyvelni. Rögzítse helyesbítő bizonylatként a nyitott időszakban.";
   } else if (fy!.status === "CLOSING") {
-    errors.accountingDate = "Az üzleti év zárlati állapotban van, ide jelenleg nem lehet könyvelni.";
+    // Zárlati állapotban csak a mérlegfordulónapra lehet könyvelni (zárlati tételek, Szt. 164. § (1)).
+    if (doc.accountingDate !== fy!.endDate) {
+      errors.accountingDate = `Az üzleti év zárlati állapotban van: csak a mérlegfordulónapra (${formatDateHu(fy!.endDate)}) lehet zárlati tételt könyvelni.`;
+    }
   } else if (!period || period.status === "CLOSED") {
     errors.accountingDate = `A(z) ${monthLabelHu(doc.accountingDate)} lezárt időszak, ide nem lehet könyvelni. Rögzítse helyesbítő tételként a nyitott időszakban.`;
   }
@@ -513,6 +516,141 @@ async function postDocument(tx: Tx, companyId: string, docId: string, user: Auth
     ip,
   });
   return posted!;
+}
+
+
+/**
+ * Sztornó: új, azonnal könyvelt bizonylat ugyanazokkal a tételekkel (a cég
+ * beállítása szerint fordított oldalon vagy negatív előjellel), hivatkozással
+ * az eredetire. Az analitikai párosítások felbomlanak, az eredeti analitikás
+ * sorait a sztornó sorai egyenlítik ki.
+ */
+export async function reverseDocument(
+  tx: Tx,
+  companyId: string,
+  documentId: string,
+  user: AuthUser,
+  ip: string,
+  input: { accountingDate: string; reason: string },
+): Promise<string> {
+    const orig = await loadDoc(tx, companyId, documentId, true);
+    const [company] = await tx.select({ reversalMethod: companies.reversalMethod }).from(companies).where(eq(companies.id, companyId));
+    if (orig.status !== "POSTED") throw conflict("Csak könyvelt bizonylat sztornózható; a piszkozat egyszerűen törölhető.");
+    if (orig.docType === "SZT") throw conflict("Sztornó bizonylat nem sztornózható. Ha hibás volt, rögzítse újra az eredeti tételt.");
+    const [already] = await tx.select({ serial: documents.serialNumber }).from(documents).where(eq(documents.reversesDocumentId, orig.id));
+    if (already) throw conflict(`A bizonylatot már sztornózták (${already.serial}).`);
+    const fy = await fiscalYearFor(tx, companyId, input.accountingDate);
+    if (!fy) throw validationError({ accountingDate: `A dátum (${formatDateHu(input.accountingDate)}) egyik üzleti évbe sem esik.` });
+
+    const origLines = await tx.select().from(journalLines).where(eq(journalLines.documentId, orig.id)).orderBy(asc(journalLines.lineNo));
+    const [storno] = await tx
+      .insert(documents)
+      .values({
+        companyId,
+        fiscalYearId: fy.id,
+        docType: "SZT",
+        externalNumber: orig.serialNumber,
+        partnerId: orig.partnerId,
+        description: `Sztornó: ${orig.serialNumber} – ${input.reason}`,
+        issueDate: todayIso(),
+        fulfillmentDate: orig.fulfillmentDate,
+        accountingDate: input.accountingDate,
+        currency: orig.currency,
+        fxAmount: orig.fxAmount,
+        fxRate: orig.fxRate,
+        fxRateSource: orig.fxRateSource,
+        fxRateDate: orig.fxRateDate,
+        reversesDocumentId: orig.id,
+        affectsFiscalYearId: orig.fiscalYearId !== fy.id ? orig.fiscalYearId : null,
+        source: "REVERSAL",
+        createdBy: user.id,
+      })
+      .returning({ id: documents.id });
+    await tx.insert(journalLines).values(
+      reverseLines(
+        origLines.map((l) => ({ ...l, side: l.side! })),
+        company!.reversalMethod,
+      ).map(({ id: _id, documentId: _d, ...l }) => ({ ...l, documentId: storno!.id })),
+    );
+    const posted = await postDocument(tx, companyId, storno!.id, user, ip, { reversal: true });
+    // Analitika: az eredeti bizonylat párosításai felbomlanak (pl. a kifizetett számla sztornójánál a
+    // fizetés újra párosítatlan lesz), az eredeti analitikás sorait pedig a sztornó sorai egyenlítik ki.
+    const origIds = origLines.map((l) => l.id);
+    const removed = await tx
+      .delete(settlements)
+      .where(sql`${settlements.itemLineId} IN (${sql.join(origIds.map((x) => sql`${x}`), sql`, `)}) OR ${settlements.settlingLineId} IN (${sql.join(origIds.map((x) => sql`${x}`), sql`, `)})`)
+      .returning();
+    const accs = await accountMap(tx, companyId);
+    const stornoLines = await tx.select().from(journalLines).where(eq(journalLines.documentId, storno!.id)).orderBy(asc(journalLines.lineNo));
+    const pairs = origLines.flatMap((l, i) => {
+      const sub = l.accountId ? accs.get(l.accountId)?.subledger : undefined;
+      const s = stornoLines[i];
+      if (!s || !sub || !l.side || !lineRole(sub, l.side) || !l.partnerId) return [];
+      return [{ companyId, itemLineId: l.id, settlingLineId: s.id, amount: Math.abs(l.amount), source: "REVERSAL" as const, createdBy: user.id }];
+    });
+    if (pairs.length) await tx.insert(settlements).values(pairs);
+    if (removed.length) {
+      await writeAudit(tx, {
+        companyId,
+        userId: user.id,
+        action: "settlement.delete",
+        entityType: "document",
+        entityId: orig.id,
+        before: { reason: "sztornó", settlements: removed.map((r) => ({ itemLineId: r.itemLineId, settlingLineId: r.settlingLineId, amount: r.amount })) },
+        ip: ip,
+      });
+    }
+    await writeAudit(tx, {
+      companyId,
+      userId: user.id,
+      action: "document.reverse",
+      entityType: "document",
+      entityId: orig.id,
+      after: { serialNumber: orig.serialNumber, reversalSerialNumber: posted.serialNumber, reason: input.reason, accountingDate: input.accountingDate },
+      ip: ip,
+    });
+    return storno!.id;
+}
+
+/** Rendszer által létrehozott (nyitó, záró) bizonylat rögzítése és azonnali könyvelése. */
+export async function createSystemDocument(
+  tx: Tx,
+  companyId: string,
+  user: AuthUser,
+  ip: string,
+  d: {
+    docType: "NYIT" | "ZAR";
+    accountingDate: string;
+    description: string;
+    partnerId?: string | null;
+    externalNumber?: string | null;
+    issueDate?: string | null;
+    dueDate?: string | null;
+    lines: Array<{ accountId: string; side: "D" | "C"; amount: number; partnerId?: string | null }>;
+  },
+): Promise<DocRow> {
+  const fy = await fiscalYearFor(tx, companyId, d.accountingDate);
+  if (!fy) throw validationError({ accountingDate: `A dátum (${formatDateHu(d.accountingDate)}) egyik üzleti évbe sem esik.` });
+  const [doc] = await tx
+    .insert(documents)
+    .values({
+      companyId,
+      fiscalYearId: fy.id,
+      docType: d.docType,
+      partnerId: d.partnerId ?? null,
+      externalNumber: d.externalNumber ?? null,
+      description: d.description,
+      issueDate: d.issueDate ?? d.accountingDate,
+      accountingDate: d.accountingDate,
+      dueDate: d.dueDate ?? null,
+      source: d.docType === "NYIT" ? "OPENING" : "CLOSING",
+      createdBy: user.id,
+    })
+    .returning({ id: documents.id });
+  await tx.insert(journalLines).values(
+    d.lines.map((l, i) => ({ companyId, documentId: doc!.id, lineNo: i + 1, accountId: l.accountId, side: l.side, amount: l.amount, partnerId: l.partnerId ?? null })),
+  );
+  return postDocument(tx, companyId, doc!.id, user, ip, { reversal: true });
 }
 
 // ---------- Útvonalak ----------
@@ -668,83 +806,7 @@ export const documentsModule: AppModule = {
       const input = parseBody(reverseSchema, request.body);
       const id = await db
         .transaction(async (tx) => {
-          const orig = await loadDoc(tx, companyId, documentId, true);
-          const [company] = await tx.select({ reversalMethod: companies.reversalMethod }).from(companies).where(eq(companies.id, companyId));
-          if (orig.status !== "POSTED") throw conflict("Csak könyvelt bizonylat sztornózható; a piszkozat egyszerűen törölhető.");
-          if (orig.docType === "SZT") throw conflict("Sztornó bizonylat nem sztornózható. Ha hibás volt, rögzítse újra az eredeti tételt.");
-          const [already] = await tx.select({ serial: documents.serialNumber }).from(documents).where(eq(documents.reversesDocumentId, orig.id));
-          if (already) throw conflict(`A bizonylatot már sztornózták (${already.serial}).`);
-          const fy = await fiscalYearFor(tx, companyId, input.accountingDate);
-          if (!fy) throw validationError({ accountingDate: `A dátum (${formatDateHu(input.accountingDate)}) egyik üzleti évbe sem esik.` });
-
-          const origLines = await tx.select().from(journalLines).where(eq(journalLines.documentId, orig.id)).orderBy(asc(journalLines.lineNo));
-          const [storno] = await tx
-            .insert(documents)
-            .values({
-              companyId,
-              fiscalYearId: fy.id,
-              docType: "SZT",
-              externalNumber: orig.serialNumber,
-              partnerId: orig.partnerId,
-              description: `Sztornó: ${orig.serialNumber} – ${input.reason}`,
-              issueDate: todayIso(),
-              fulfillmentDate: orig.fulfillmentDate,
-              accountingDate: input.accountingDate,
-              currency: orig.currency,
-              fxAmount: orig.fxAmount,
-              fxRate: orig.fxRate,
-              fxRateSource: orig.fxRateSource,
-              fxRateDate: orig.fxRateDate,
-              reversesDocumentId: orig.id,
-              affectsFiscalYearId: orig.fiscalYearId !== fy.id ? orig.fiscalYearId : null,
-              source: "REVERSAL",
-              createdBy: user.id,
-            })
-            .returning({ id: documents.id });
-          await tx.insert(journalLines).values(
-            reverseLines(
-              origLines.map((l) => ({ ...l, side: l.side! })),
-              company!.reversalMethod,
-            ).map(({ id: _id, documentId: _d, ...l }) => ({ ...l, documentId: storno!.id })),
-          );
-          const posted = await postDocument(tx, companyId, storno!.id, user, request.ip, { reversal: true });
-          // Analitika: az eredeti bizonylat párosításai felbomlanak (pl. a kifizetett számla sztornójánál a
-          // fizetés újra párosítatlan lesz), az eredeti analitikás sorait pedig a sztornó sorai egyenlítik ki.
-          const origIds = origLines.map((l) => l.id);
-          const removed = await tx
-            .delete(settlements)
-            .where(sql`${settlements.itemLineId} IN (${sql.join(origIds.map((x) => sql`${x}`), sql`, `)}) OR ${settlements.settlingLineId} IN (${sql.join(origIds.map((x) => sql`${x}`), sql`, `)})`)
-            .returning();
-          const accs = await accountMap(tx, companyId);
-          const stornoLines = await tx.select().from(journalLines).where(eq(journalLines.documentId, storno!.id)).orderBy(asc(journalLines.lineNo));
-          const pairs = origLines.flatMap((l, i) => {
-            const sub = l.accountId ? accs.get(l.accountId)?.subledger : undefined;
-            const s = stornoLines[i];
-            if (!s || !sub || !l.side || !lineRole(sub, l.side) || !l.partnerId) return [];
-            return [{ companyId, itemLineId: l.id, settlingLineId: s.id, amount: Math.abs(l.amount), source: "REVERSAL" as const, createdBy: user.id }];
-          });
-          if (pairs.length) await tx.insert(settlements).values(pairs);
-          if (removed.length) {
-            await writeAudit(tx, {
-              companyId,
-              userId: user.id,
-              action: "settlement.delete",
-              entityType: "document",
-              entityId: orig.id,
-              before: { reason: "sztornó", settlements: removed.map((r) => ({ itemLineId: r.itemLineId, settlingLineId: r.settlingLineId, amount: r.amount })) },
-              ip: request.ip,
-            });
-          }
-          await writeAudit(tx, {
-            companyId,
-            userId: user.id,
-            action: "document.reverse",
-            entityType: "document",
-            entityId: orig.id,
-            after: { serialNumber: orig.serialNumber, reversalSerialNumber: posted.serialNumber, reason: input.reason, accountingDate: input.accountingDate },
-            ip: request.ip,
-          });
-          return storno!.id;
+          return reverseDocument(tx, companyId, documentId, user, request.ip, input);
         })
         .catch(mapDbError);
       return reply.code(201).send(await documentDto(db, companyId, id));

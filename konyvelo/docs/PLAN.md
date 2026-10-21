@@ -149,10 +149,13 @@ Jelölés: PK = elsődleges kulcs, FK = idegen kulcs. Minden táblában van `cre
 - **Évzárás** (K 5.2, K 5.5):
   1. Fordulónap után: év → `CLOSING`. Csak a fordulónapra datált zárlati bizonylat rögzíthető (pl. elhatárolás, értékvesztés, társasági adó).
   2. Évzárási ellenőrzések: analitika–főkönyv egyeztetés (K 4.2), minden bizonylat könyvelve, mérleg egyezik.
-  3. **Előnézet**: a rendszer kiszámolja és megmutatja a zárótételeket (eredményszámlák zárása, adózott eredmény, zárómérleg) – mentés előtt átnézhető.
-  4. Megerősítés (a cég rövid nevét be kell gépelni) → zárótételek könyvelése → év `CLOSED`, megőrzési határidő beállítva.
-  5. Következő év nyitótételei automatikusan, a záró egyenlegekből; az előző év eredménye az eredménytartalékba kerül.
-- **Zárás feloldása**: csak Adminisztrátor, kötelező indoklással; audit naplóba kerül, a már zárt évre vonatkozó minden változás látszik.
+  3. **Előnézet**: a záró bizonylat (`ZAR`) tételei: az eredményszámlák (5–9. osztály) egyenlege a 493 Adózott eredmény elszámolási számlán át a 419 Adózott eredmény számlára – mentés előtt átnézhető.
+  4. Megerősítés (a cég rövid nevét be kell gépelni) → záró bizonylat könyvelése a fordulónapra → év `CLOSED`, megőrzési határidő (a fordulónap évét követő 8. év vége).
+  5. Nyitás: a következő év első napjára nyitó bizonylat (`NYIT`): 419 → 413 Eredménytartalék (Szt. 37. § (2) a)). A mérlegszámlák egyenlege folyamatosan áthúzódik, ezért külön 492/491 zárómérleg–nyitómérleg tételpár nem kell; az eredménykimutatás a záró bizonylatot figyelmen kívül hagyja, így a lezárt év kimutatása is megmarad.
+  6. Előfeltétel: a következő üzleti év már létezik (oda kerül a nyitás).
+- **Nyitó egyenlegek átvétele** (meglévő cég indítása, akár évközben): beillesztett főkönyvi kivonat (Excelből) és nyitott vevő/szállító tételek → nyitó bizonylatok a 491 Nyitómérleg-számlával szemben (a nyitott tételenként külön bizonylat, hogy kiegyenlíthetők legyenek). Ellenőrzés: Σ tartozik = Σ követel, a nyitott tételek összege = a vevő/szállító számla egyenlege.
+- **Jelentős összegű hiba külön oszlopa** (K 5.4): a bemutatás módját könyvelővel egyeztetni kell; addig a helyesbítő bizonylat jelöli az érintett évet, a külön oszlop később készül.
+- **Zárás feloldása**: csak Adminisztrátor, kötelező indoklással; audit naplóba kerül. Év újranyitásakor a záró és a nyitó bizonylatot a rendszer sztornózza, így minden változás látszik.
 
 ### 4.10 Kimutatások
 

@@ -3,6 +3,7 @@ import {
   AMOUNT_BASE_LABELS,
   DOCUMENT_TYPES,
   isValidIsoDate,
+  SYSTEM_DOCUMENT_TYPES,
   type AmountBase,
   type DeadlineKind,
   type DeadlineStatus,
@@ -36,7 +37,7 @@ const optionalUuid = (message: string) =>
     .optional();
 
 /** A felhasználó által rögzíthető típusok; a sztornót a rendszer hozza létre. */
-export const ENTERABLE_DOCUMENT_TYPES = (Object.keys(DOCUMENT_TYPES) as DocumentType[]).filter((t) => t !== "SZT") as [
+export const ENTERABLE_DOCUMENT_TYPES = (Object.keys(DOCUMENT_TYPES) as DocumentType[]).filter((t) => !SYSTEM_DOCUMENT_TYPES.includes(t)) as [
   DocumentType,
   ...DocumentType[],
 ];

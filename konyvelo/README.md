@@ -15,7 +15,7 @@ Magyar nyelvű, kettős könyvvitelt vezető webalkalmazás. A követelmények a
 | 3. Bizonylatok és tételek | rögzítés, egyensúly, előnézet, könyvelés hézagmentes sorszámmal, sztornó, helyesbítés, sablonok, rögzítési határidő, Teendők | ✅ kész |
 | 4. Analitika, bank, pénztár | nyitott tételek, kiegyenlítés (rögzítéskor vagy utólag), korosítás, főkönyv–analitika egyeztetés, bank- és pénztárnapló, negatív pénztár tiltása, pénztármaximum | ✅ kész |
 | 5. Kimutatások | főkönyvi kivonat, naplófőkönyv, karton, mérleg („A”), eredménykimutatás (összköltség), előző év, Ft / ezer Ft, CSV, nyomtatás/PDF | ✅ kész |
-| 6. Zárás | | ⏳ |
+| 6. Zárás | havi időszakzárás és feloldás, zárlati állapot, évzárás előnézettel, nyitás, év újranyitása, nyitó egyenlegek átvétele; Excel (.xlsx) export | ✅ kész |
 | 7. NAV Online Számla import | | ⏳ |
 | 8. Mentés, export, Docker | | ⏳ |
 
@@ -123,12 +123,53 @@ Kb. 10 perc. Indítás után (`npm run dev`, majd http://localhost:5173) üres a
 6. **Eredménykimutatás**: összköltség-eljárással, I–X sorok és A–D eredmények; az előző év oszlopa az egy évvel korábbi időszak.
 7. Bármelyik kimutatásnál: **Letöltés (CSV, Excel)** – Excelben dupla kattintással megnyílik; **Nyomtatás / PDF** – a böngésző nyomtatási ablakában „Mentés PDF-ként”. Nyomtatásban csak maga a kimutatás látszik.
 
-**7. Amit még érdemes megnézni**
+**7. Zárás (6. lépés)**
+
+1. **Zárás → Időszakok és évzárás**: a *Havi időszakok* táblában a januárnál nyomja meg a **Lezárás**-t: mivel januárban piszkozat van (Postaköltség), a rendszer nem engedi, és megmondja, miért. Zárja le a februárt: sikerül.
+2. Próbáljon a **Könyvelés**-ben februári dátumra könyvelni: „A(z) 2026. február lezárt időszak, ide nem lehet könyvelni…”.
+3. **Feloldás** (csak Adminisztrátor): indoklás nélkül nem megy; írjon be egy okot. A feloldás az audit naplóba kerül.
+4. **Évzárás** (érdemes külön próbacégen): hozza létre a *következő* üzleti évet (Beállítások → Üzleti évek). A Zárás oldalon az ellenőrzőlista mutatja, mi hiányzik még (piszkozatok, egyeztetés, zárási számlák, következő év).
+5. **1. Zárlat indítása**: ezután csak a fordulónapra (12.31.) lehet könyvelni – próbálja ki egy 12.30-i bizonylattal (hibaüzenet), majd egy 12.31-i zárlati tétellel (sikerül).
+6. **2. Előnézet**: a záró tételek (eredményszámlák → 493 → 419) és az adózott eredmény. **3.** Írja be a cég rövid nevét, majd **Évzárás véglegesítése**: létrejön a `ZAR-…` záró és a `NYIT-…` nyitó bizonylat (az eredmény a 413 Eredménytartalékba kerül).
+7. **Kimutatások → Mérleg**: a lezárt év fordulónapjára az eredmény a D.VII soron; a következő évre a D.IV Eredménytartalékban, az előző év oszlopában a tavalyi adatokkal.
+8. **Év újranyitása** (Adminisztrátor, indoklással): a záró és a nyitó bizonylat sztornózva, az év újra könyvelhető.
+9. Bármelyik kimutatásnál **Excel (.xlsx)**: formázott táblázat cégfejléccel, ezres tagolással, kiemelt összesítő sorokkal, nyomtatásra beállítva.
+
+**8. Amit még érdemes megnézni**
 
 - *Helyesbítő bizonylat*: a `BANK-2026-00001` oldalán „Helyesbítő bizonylat” – csak a különbözetet kell rögzíteni, az eredeti tételei felül látszanak.
 - *Beállítások → Audit napló*: minden lépés (piszkozat, könyvelés, sztornó) benne van; a „Sértetlenség ellenőrzése” gomb ellenőrzi a hash-láncot.
 - *Sötét mód* (fejléc ◐ gombja) és *mobil nézet* (keskeny ablak): a tételtábla a saját dobozában görgethető.
 - A lezárt időszakba könyvelés tiltása az adatbázisban már működik (tesztek ellenőrzik); a havi zárás felülete a 6. lépésben jön.
+
+## Meglévő cég indítása évközben (nyitó egyenlegek)
+
+Példa: a cég eddig másik programban könyvelt, 2026. október 1-jétől ebben a programban folytatja. Kb. 20 perc.
+
+1. **Cég és üzleti év**: vegye fel a céget, és az üzleti évet a **teljes évre** (2026.01.01.–2026.12.31.) – az eredménykimutatás az év elejétől számol.
+2. **Számlatükör** (Beállítások → Számlatükör): nézze meg, hogy a régi programban használt számlák megvannak-e. Ha ott alszámlák voltak (pl. `3841` OTP, `3842` K&H), hozza létre őket itt is; gyűjtőszámlára (pl. `384`, ha van alszámlája) nem lehet nyitó egyenleget adni.
+3. **Partnerek**: vegye fel azokat a vevőket és szállítókat, akiknek nyitott számlájuk van. A beillesztéskor a rendszer név vagy adószám alapján találja meg őket.
+4. Kérje le a régi programból a **2026.09.30-i főkönyvi kivonatot** (számlánként a záró egyenleg), és a **nyitott vevő- és szállítótételek** listáját.
+5. **Zárás → Nyitó egyenlegek**:
+   - *Az átvétel napja*: `2026.09.30.`
+   - *Főkönyvi kivonat*: jelölje ki Excelben a számlaszám, megnevezés, tartozik, követel oszlopokat, másolja (Ctrl+C), és illessze be (Ctrl+V). A mérlegszámlák mellett az **eredményszámlák (5., 8., 9. osztály) január–szeptemberi halmozott egyenlegét** is adja meg, különben az éves eredménykimutatás hiányos lesz. Például:
+     ```
+     384	Elszámolási betétszámla	1 000 000
+     311	Belföldi vevők	254 000
+     454	Szállítók		127 000
+     411	Jegyzett tőke		3 000 000
+     413	Eredménytartalék	2 000 000
+     912	Árbevétel – szolgáltatás		200 000
+     522	Bérleti díjak	73 000
+     ```
+   - *Nyitott vevőtételek* és *Nyitott szállítói tételek*: soronként `partner; számlaszám; esedékesség; összeg`, pl. `Vevő Zrt.;V-9;2026.10.10;254 000`.
+   - A táblázatok soronként jelzik a hibát (ismeretlen számla vagy partner, gyűjtőszámla), alul az összesen: **tartozik = követel**, és a nyitott tételek összege = a 311/454 egyenlege. Ha minden zöld: **Nyitó egyenlegek könyvelése**.
+6. **Ellenőrzés**: *Kimutatások → Főkönyvi kivonat* 2026.01.01.–2026.09.30. – a záró oszlop egyezzen a régi program kivonatával (a 491 Nyitómérleg-számla egyenlege 0). *Partnerek → Nyitott tételek*: a beillesztett számlák nyitottként látszanak; *Egyeztetés*: minden „Egyezik”.
+7. **Zárja le a január–szeptember időszakokat** (Zárás), hogy oda tévedésből ne lehessen könyvelni.
+8. **Október könyvelése**: szállítói és vevőszámlák (Alt+L sablonnal), banki kifizetések és jóváírások – a nyitott tételek kiválasztásával kiegyenlítve –, pénztár.
+9. **Hónap végén**: *Bank és pénztár* → bankkivonat záró egyenlegének egyeztetése; *Főkönyvi kivonat* októberre; *Egyeztetés*; végül az október lezárása.
+
+Ha egy nyitó tétel hibás, a nyitó bizonylat (NYIT-…) sztornózható, és a helyes adat újra rögzíthető.
 
 ## Éles futtatás (egyszerű)
 

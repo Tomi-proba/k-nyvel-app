@@ -10,11 +10,11 @@ import { ForcedPasswordChangePage, LoginPage, SetupPage } from "./features/auth/
 import { ChartOfAccountsPage } from "./features/accounts/ChartOfAccountsPage";
 import { DocumentPage, DocumentsPage, NewDocumentPage } from "./features/documents/DocumentsPages";
 import { MoneyPage } from "./features/subledger/MoneyPage";
+import { ClosingPage, OpeningPage } from "./features/closing/ClosingPages";
 import { BalanceSheetPage, IncomeStatementPage, JournalPage, LedgerPage, TrialBalancePage } from "./features/reports/ReportsPages";
 import { OpenItemsPage, ReconciliationPage } from "./features/subledger/SubledgerPages";
 import { HomePage } from "./features/home/HomePage";
 import { NewPartnerPage, PartnerDetailPage, PartnersPage } from "./features/partners/PartnersPages";
-import { ComingSoon } from "./features/placeholders/ComingSoon";
 import { AuditLogPage } from "./features/settings/AuditLogPage";
 import { FiscalYearsPage } from "./features/settings/FiscalYearsPage";
 import { MembersPage } from "./features/settings/MembersPage";
@@ -99,7 +99,8 @@ function Root() {
           <Route path="kimutatasok/karton" element={<LedgerPage />} />
           <Route path="kimutatasok/merleg" element={<BalanceSheetPage />} />
           <Route path="kimutatasok/eredmeny" element={<IncomeStatementPage />} />
-          <Route path="zaras" element={<ComingSoon title="Zárás" step={6} description="Havi időszakok lezárása, évzárás előnézettel, nyitás." />} />
+          <Route path="zaras" element={<ClosingPage />} />
+          <Route path="zaras/nyitas" element={<OpeningPage />} />
           <Route path="beallitasok" element={<SettingsLayout />}>
             <Route index element={<Navigate to={me.data.companies.length ? "ceg" : "jelszo"} replace />} />
             <Route path="ceg" element={<CompanySettingsPage />} />

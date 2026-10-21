@@ -505,7 +505,7 @@ test("kimutatások: főkönyvi kivonat, naplófőkönyv, karton, mérleg, eredm�
   await expect(page.getByText("Ellenőrzés: minden oszlopban Σ tartozik = Σ követel.")).toBeVisible();
   await expectAccessible(page, "Főkönyvi kivonat");
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Letöltés (CSV, Excel)" }).click();
+  await page.getByRole("button", { name: "CSV" }).click();
   expect((await download).suggestedFilename()).toMatch(/^fokonyvi-kivonat_.*\.csv$/);
 
   const tabs = page.getByRole("navigation", { name: "Kimutatások almenü" });
@@ -536,6 +536,64 @@ test("kimutatások: főkönyvi kivonat, naplófőkönyv, karton, mérleg, eredm�
   await page.getByLabel("Pénzegység").selectOption("THOUSAND");
   await expect(page.getByText(/adatok ezer Ft-ban/)).toBeVisible();
   await expectAccessible(page, "Eredménykimutatás");
+});
+
+test("zárás: havi időszak lezárása és feloldása, évzárási ellenőrzések; nyitó egyenlegek; Excel-export", async ({ page }) => {
+  await login(page);
+  await page.getByRole("navigation", { name: "Főmenü" }).getByRole("link", { name: "Zárás" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Időszakok és évzárás" })).toBeVisible();
+  await expectAccessible(page, "Zárás");
+  // Januárban piszkozat van (Postaköltség), így nem zárható.
+  await page.getByRole("button", { name: "Lezárás: 2026. január" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Lezárás" }).click();
+  await expect(page.getByRole("status").getByText(/2026\. január időszakban 1 piszkozat van/)).toBeVisible();
+  await page.getByRole("button", { name: "Lezárás: 2026. február" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Lezárás" }).click();
+  await expect(page.getByRole("status").getByText("2026. február lezárva.")).toBeVisible();
+  await page.getByRole("button", { name: "Feloldás: 2026. február" }).click();
+  const reopen = page.getByRole("alertdialog", { name: "2026. február feloldása" });
+  await expect(reopen.getByRole("button", { name: "Mégse" })).toBeFocused();
+  await reopen.getByRole("textbox", { name: "Indoklás" }).fill("Elmaradt bizonylat");
+  await reopen.getByRole("button", { name: "Feloldás" }).click();
+  await expect(page.getByRole("status").getByText("2026. február feloldva.")).toBeVisible();
+  await expect(page.getByText(/piszkozat van az üzleti évben/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "1. Zárlat indítása" })).toBeVisible();
+
+  // Nyitó egyenlegek beillesztéssel (mintha Excelből másolnánk).
+  await page.getByRole("navigation", { name: "Zárás almenü" }).getByRole("link", { name: "Nyitó egyenlegek" }).click();
+  await page.getByRole("textbox", { name: "Az átvétel napja" }).fill("2026.09.30");
+  const box = page.getByRole("textbox", { name: "1. Főkönyvi kivonat (záró egyenlegek)" });
+  await box.fill("Számla\tMegnevezés\tTartozik\tKövetel\n3841\tOTP\t500 000\t\n411\tJegyzett tőke\t\t400 000");
+  await expect(page.getByText("Eltérés: 100 000 Ft")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Nyitó egyenlegek könyvelése" })).toBeDisabled();
+  await box.fill("3841\tOTP\t500 000\t\n411\tJegyzett tőke\t\t500 000");
+  await expect(page.getByRole("cell", { name: "Egyezik" })).toBeVisible();
+  await expectAccessible(page, "Nyitó egyenlegek");
+  await page.getByRole("button", { name: "Nyitó egyenlegek könyvelése" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Könyvelés" }).click();
+  await expect(page.getByRole("status").getByText("Nyitó egyenlegek rögzítve (1 bizonylat).")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Főkönyvi kivonat" })).toBeVisible();
+
+  // Valódi Excel-fájl (xlsx = ZIP-csomag).
+  await page.goto("/kimutatasok/merleg");
+  await expect(page.getByText("Ellenőrzés: eszközök összesen = források összesen.")).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Excel (.xlsx)" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^merleg_\d{4}-\d{2}-\d{2}\.xlsx$/);
+  const fs = await import("node:fs/promises");
+  const bytes = await fs.readFile((await file.path())!);
+  expect(bytes.subarray(0, 2).toString()).toBe("PK");
+  const { default: ExcelJS } = await import("exceljs");
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(bytes);
+  const ws = wb.worksheets[0]!;
+  const texts = ws.getColumn(1).values.map(String);
+  expect(texts).toEqual(expect.arrayContaining(["Mérleg („A” változat)", "Belső kimutatás – nem minősül közzétett beszámolónak", "A kimutatás a könyvelt tételek alapján készült."]));
+  const totalRow = ws.getRows(1, ws.rowCount)!.find((r) => r.getCell(2).value === "ESZKÖZÖK (AKTÍVÁK) ÖSSZESEN")!;
+  expect(totalRow.font?.bold).toBe(true);
+  expect(totalRow.getCell(4).numFmt).toBe("#,##0");
+  expect(typeof totalRow.getCell(4).value).toBe("number");
 });
 
 test("mobil nézet: nincs vízszintes görgetés, a menü elérhető", async ({ page }) => {

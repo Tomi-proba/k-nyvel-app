@@ -16,6 +16,7 @@ import { companiesModule } from "./modules/companies";
 import { fiscalYearsModule } from "./modules/fiscal-years";
 import { documentsModule } from "./modules/documents";
 import { partnersModule } from "./modules/partners";
+import { closingModule } from "./modules/closing";
 import { reportsModule } from "./modules/reports";
 import { subledgerModule } from "./modules/subledger";
 import { templatesModule } from "./modules/templates";
@@ -31,6 +32,7 @@ export const MODULES: AppModule[] = [
   documentsModule,
   subledgerModule,
   reportsModule,
+  closingModule,
   auditModule,
 ];
 

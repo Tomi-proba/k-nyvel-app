@@ -11,7 +11,7 @@ import type { NormalSide, Subledger } from "./accounts";
  * bizonylattal lehet (Szt. 165. § (2), 167. § (7)).
  */
 
-export type DocumentType = "SZSZ" | "VSZ" | "BANK" | "PB" | "PK" | "VEGY" | "SZT" | "HELY";
+export type DocumentType = "SZSZ" | "VSZ" | "BANK" | "PB" | "PK" | "VEGY" | "SZT" | "HELY" | "NYIT" | "ZAR";
 
 export type DocumentTypeInfo = {
   code: DocumentType;
@@ -66,7 +66,12 @@ export const DOCUMENT_TYPES: Record<DocumentType, DocumentTypeInfo> = {
   VEGY: T("VEGY", "Vegyes (belső) bizonylat"),
   SZT: T("SZT", "Sztornó bizonylat", { selectable: false }),
   HELY: T("HELY", "Helyesbítő bizonylat", { selectable: false }),
+  NYIT: T("NYIT", "Nyitó bizonylat", { selectable: false }),
+  ZAR: T("ZAR", "Záró bizonylat (évzárás)", { selectable: false }),
 };
+
+/** A rendszer által létrehozott típusok: kézzel nem rögzíthetők és nem szerkeszthetők. */
+export const SYSTEM_DOCUMENT_TYPES: readonly DocumentType[] = ["SZT", "NYIT", "ZAR"];
 
 export const DOCUMENT_TYPE_CODES = Object.keys(DOCUMENT_TYPES) as DocumentType[];
 

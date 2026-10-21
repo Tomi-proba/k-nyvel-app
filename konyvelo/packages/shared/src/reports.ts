@@ -103,3 +103,21 @@ export const INTERNAL_STATEMENT_HEADER = "Belső kimutatás – nem minősül k�
 export const INTERNAL_STATEMENT_FOOTER = "A kimutatás a könyvelt tételek alapján készült.";
 /** Szt. 154. § (3): könyvvizsgálattal nem ellenőrzött, közzétett beszámolón kötelező. */
 export const NOT_AUDITED_NOTICE = "A közzétett adatok könyvvizsgálattal nincsenek alátámasztva.";
+
+// ---------- Zárás ----------
+
+export type ClosingStatusDto = {
+  fiscalYear: { id: string; startDate: string; endDate: string; status: "OPEN" | "CLOSING" | "CLOSED"; closedAt: string | null; retentionUntil: string | null };
+  periods: Array<{ id: string; startDate: string; endDate: string; status: "OPEN" | "CLOSED"; drafts: number; label: string }>;
+  /** Piszkozatok száma az üzleti évben. */
+  drafts: number;
+  /** Főkönyv–analitika eltérések a fordulónapon. */
+  reconciliationDifferences: Array<{ accountNumber: string; difference: number }>;
+  /** Hiányzó zárási számlák (493, 419, 413, 491). */
+  missingAccounts: string[];
+  nextFiscalYear: { id: string; startDate: string; endDate: string; status: "OPEN" | "CLOSING" | "CLOSED" } | null;
+  /** A záró bizonylat előnézete (lezárt évnél null). Az eredmény pozitív, ha nyereség. */
+  preview: { result: number; lines: Array<{ accountNumber: string; accountName: string; side: "D" | "C"; amount: number }> } | null;
+  /** A már könyvelt záró és nyitó bizonylatok. */
+  closingDocuments: Array<{ id: string; serialNumber: string | null }>;
+};
