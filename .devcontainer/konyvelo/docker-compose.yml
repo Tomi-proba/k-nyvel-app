@@ -14,6 +14,10 @@ services:
   db:
     image: postgres:16
     restart: unless-stopped
+    # Az app ennek a konténernek a hálózatán fut, ezért a webes port itt kerül kiadásra:
+    # a Codespace porttovábbítása a gazdagépről (a konténeren kívülről) csatlakozik.
+    ports:
+      - "5173:5173"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
