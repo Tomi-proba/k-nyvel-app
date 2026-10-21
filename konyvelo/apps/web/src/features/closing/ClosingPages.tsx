@@ -123,7 +123,9 @@ export function ClosingPage() {
           text: d.reconciliationDifferences.length === 0 ? "A főkönyv és az analitika egyezik a fordulónapon." : `Főkönyv–analitika eltérés: ${d.reconciliationDifferences.map((r) => `${r.accountNumber} (${formatHuf(r.difference)})`).join(", ")}.`,
           link: "/partnerek/egyeztetes",
         },
-        { ok: d.missingAccounts.length === 0, text: d.missingAccounts.length === 0 ? "A zárási számlák (491, 493, 419, 413) megvannak." : `Hiányzó zárási számlák: ${d.missingAccounts.join(", ")}.`, link: d.missingAccounts.length ? "/beallitasok/szamlatukor" : null },
+        // Az évzárás állapota; a lista csak le nem zárt évnél látszik.
+        { ok: false, text: d.fiscalYear.status === "CLOSING" ? "Az üzleti év zárlati állapotban van, még nincs lezárva." : "Az üzleti év még nincs lezárva.", link: null },
+        ...(d.missingAccounts.length > 0 ? [{ ok: false, text: `Hiányzó zárási számlák a számlatükörben: ${d.missingAccounts.join(", ")}.`, link: "/beallitasok/szamlatukor" }] : []),
         { ok: Boolean(d.nextFiscalYear), text: d.nextFiscalYear ? `A következő üzleti év (${fiscalYearLabel(d.nextFiscalYear)}) létezik; a nyitás oda kerül.` : "Hozza létre a következő üzleti évet (a nyitáshoz kell).", link: d.nextFiscalYear ? null : "/beallitasok/uzleti-evek" },
       ]
     : [];
