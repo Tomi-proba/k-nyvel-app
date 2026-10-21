@@ -8,8 +8,8 @@ echo "▶ Csomagok telepítése…"
 npx -y npm@11 install --no-audit --no-fund
 
 if [ ! -f .env ]; then
-  # Az adatbázis a „db” nevű konténerben fut.
-  sed 's/@localhost:5432/@db:5432/' .env.example > .env
+  # Az adatbázis-konténer hálózatán futunk, így az a localhost-on érhető el.
+  cp .env.example .env
   # A böngésző a Codespace saját címén éri el a programot; ezt engedélyezzük.
   if [ -n "${CODESPACE_NAME:-}" ]; then
     sed -i "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://${CODESPACE_NAME}-5173.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}|" .env
@@ -18,10 +18,10 @@ fi
 
 echo "▶ Várakozás az adatbázisra…"
 for _ in $(seq 1 60); do
-  (echo > /dev/tcp/db/5432) 2>/dev/null && break
+  (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null && break
   sleep 1
 done
 
-PGHOST=db PGUSER=postgres PGPASSWORD=postgres npm run db:setup
+PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=postgres npm run db:setup
 npm run db:migrate
 echo "✓ Kész. A program indítása: npm run dev"

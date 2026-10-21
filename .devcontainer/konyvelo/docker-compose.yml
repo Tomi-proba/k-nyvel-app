@@ -5,6 +5,9 @@ services:
     volumes:
       - ../../..:/workspaces:cached
     command: sleep infinity
+    # Az adatbázis-konténer hálózatán fut: így a Codespace porttovábbítása (forwardPorts)
+    # eléri a programot, az adatbázis pedig a localhost:5432-n érhető el.
+    network_mode: service:db
     depends_on:
       - db
 
