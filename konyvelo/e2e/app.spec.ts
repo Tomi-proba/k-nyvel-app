@@ -133,7 +133,9 @@ test("gyorsbillentyűk: Alt+N, F2, N; AltGr+N nem; ? súgó; tooltip", async ({ 
   await city.press("Alt+n");
   await expect(page).toHaveURL(/\/konyveles\/uj$/);
 
-  // Tooltip a gombon, billentyűzetes fókusszal is.
+  // Tooltip a gombon, billentyűzetes fókusszal is. Előbb meg kell várni, hogy az új oldal
+  // címsora megkapja a fókuszt (PageHeader), különben az elveszi a gombtól, és a tooltip bezárul.
+  await expect(page.getByRole("heading", { level: 1, name: "Új bizonylat" })).toBeFocused();
   await page.getByRole("button", { name: "Új tétel" }).focus();
   await expect(page.getByRole("tooltip")).toContainText("Alt+N, F2 vagy N");
 
