@@ -1,0 +1,50 @@
+name: Könyvelő CI
+
+on:
+  push:
+    paths:
+      - 'konyvelo/**'
+      - '.github/workflows/konyvelo.yml'
+  pull_request:
+    paths:
+      - 'konyvelo/**'
+      - '.github/workflows/konyvelo.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: konyvelo
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: konyvelo/package-lock.json
+      # A README szerint npm 11 kell (az npm 10-ben ismert hiba miatt).
+      - run: npx -y npm@11 ci --no-audit --no-fund
+      - run: cp .env.example .env && npm run db:setup
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
