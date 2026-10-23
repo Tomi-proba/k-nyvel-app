@@ -291,7 +291,11 @@ Könyvelő (Node)  ──►  eÁFA szolgáltatás: NAV-átjáró (Java)  ──
 | K8.2 | Könyvelő | Cégexport ZIP-ben (JSON + CSV, csatolmányok, audit napló) SHA-256-os tartalomjegyzékkel (4.11). |
 | K8.3 | Könyvelő | Végső tesztek (teljes forgatókönyv, akadálymentesség) és felhasználói súgó. |
 
-### 10.3 Döntésre vár
+**Döntés (2026-10-23): a javaslatok szerint** (1a, 2, 3). Ehhez alapelv is tartozik (TERV.md D13): egy
+cég adatai soha nem érhetők el pusztán az adószám ismeretében. A kapcsolódási kód a közös belépés után is
+kötelező.
+
+### 10.3 Döntési pontok (eldöntve)
 
 1. **Hogyan engedélyezi a cég, hogy a Könyvelő az ő NAV-kapcsolatán át kérdezzen?**
    - **a) Javaslat:** egyszer használható kapcsolódási kód az eÁFA-ból, és egyeznie kell az adószámnak is.
