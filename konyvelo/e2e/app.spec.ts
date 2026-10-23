@@ -631,3 +631,42 @@ test("mobil nézet: nincs vízszintes görgetés, a menü elérhető", async ({ 
   const entryOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(entryOverflow).toBeLessThanOrEqual(0);
 });
+
+test("NAV-import: összekapcsolás kóddal, lekérdezés, javaslat, jóváhagyás", async ({ page }) => {
+  await login(page);
+  await page.goto("/beallitasok/nav-kapcsolat");
+  await expect(page.getByRole("heading", { level: 1, name: "NAV-kapcsolat" })).toBeVisible();
+  await expect(page.getByText(/az adószám önmagában soha nem elég/)).toBeVisible();
+  await expectAccessible(page, "NAV-kapcsolat");
+  await page.getByRole("textbox", { name: "Kapcsolódási kód" }).fill("ROSSZ-KOD-1234");
+  await page.getByRole("button", { name: "Összekapcsolás" }).click();
+  await expect(page.getByText(/érvénytelen, lejárt/).first()).toBeVisible();
+  await page.getByRole("textbox", { name: "Kapcsolódási kód" }).fill("e2ea-bcde-fghj-kmnp");
+  await page.getByRole("button", { name: "Összekapcsolás" }).click();
+  await expect(page.getByRole("heading", { name: "Összekapcsolva" })).toBeVisible();
+  await expect(page.getByText("A cég NAV-kapcsolata működik.")).toBeVisible();
+  await expectAccessible(page, "NAV-kapcsolat összekapcsolva");
+
+  await page.goto("/konyveles");
+  await page.getByRole("navigation", { name: "Könyvelés almenü" }).getByRole("link", { name: "NAV-import" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "NAV-import" })).toBeVisible();
+  await page.getByRole("textbox", { name: "Kelt: ettől" }).fill("2026.10.01");
+  await page.getByRole("textbox", { name: "Kelt: eddig" }).fill("2026.10.31");
+  await page.getByRole("textbox", { name: "Kelt: eddig" }).blur();
+  await page.getByRole("button", { name: "Lekérdezés indítása" }).click();
+  await expect(page.getByText("kész – 1 számla, ebből 1 új.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "IR-2026/0101" })).toBeVisible();
+  await expectAccessible(page, "NAV-import");
+
+  await page.getByRole("link", { name: "IR-2026/0101" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "NAV-számla: IR-2026/0101" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Szállító" })).toHaveValue("Irodaszer Kft. (10537914-4-44)");
+  await expect(page.getByRole("cell", { name: "522 – Bérleti díjak" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "454 – Szállítók" })).toBeVisible();
+  await expect(page.getByText(/nem teljes számla/)).toBeVisible();
+  await expectAccessible(page, "NAV-számla javaslata");
+  await page.getByRole("button", { name: "Jóváhagyás és könyvelés" }).click();
+  await expect(page.getByText("Elkészült a bizonylat.")).toBeVisible();
+  await page.getByRole("link", { name: "Megnyitás" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: /^SZSZ-2026-/ })).toBeVisible();
+});

@@ -1016,3 +1016,7 @@ tr.clickable:hover td {
 .check-list li.todo span[aria-hidden] {
   color: var(--warning);
 }
+
+.text-error {
+  color: var(--danger);
+}

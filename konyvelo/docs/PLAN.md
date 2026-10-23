@@ -137,7 +137,7 @@ Jelölés: PK = elsődleges kulcs, FK = idegen kulcs. Minden táblában van `cre
 
 ### 4.8 NAV Online Számla import
 
-- **nav_credentials**: company_id, environment (`TEST` | `PROD`), login, password, sign_key, exchange_key – **titkosítva** (AES-256-GCM, a kulcs környezeti változóban, nem az adatbázisban) (K 9.4).
+- ~~**nav_credentials**~~ – **elmaradt (10. pont):** a NAV-titkok az eÁFA-ban vannak, a Könyvelő az eÁFA NAV-átjáróján kérdez (`nav_connections`: az összekapcsolás azonosítója és az eÁFA szerinti állapot).
 - **nav_import_runs**: direction (`INBOUND` | `OUTBOUND`), date_from, date_to (≤ 35 nap; hosszabb időszakot a rendszer felbont, K 10.4), status, counts, error_message, started_by.
 - **nav_invoices**: direction, invoice_number, operation (`CREATE` | `MODIFY` | `STORNO`), modification_index, original_invoice_number, supplier_tax_number, supplier_name, customer_tax_number, customer_name, issue_date, delivery_date, payment_due_date, payment_method, currency, net_amount, vat_amount, net_amount_huf, vat_amount_huf, completeness_indicator, raw_digest (jsonb), raw_invoice_xml (tömörítve), status (`NEW` | `PROPOSED` | `POSTED` | `IGNORED`), document_id. Egyedi: (company_id, direction, supplier_tax_number, invoice_number, modification_index) – duplikáció kizárva (K 10.8).
 - Folyamat: lekérés (lassítva, 1 kérés/másodperc, K 10.5) → partner párosítása vagy felajánlása létrehozásra → kontírozási javaslat a partner alapértelmezései vagy sablon alapján → **a felhasználó jóváhagyja** → könyvelt bizonylat (K 10.7). Módosító és sztornó számla az eredetihez kapcsolt helyesbítő vagy sztornó bizonylatot javasol.
@@ -294,6 +294,19 @@ Könyvelő (Node)  ──►  eÁFA szolgáltatás: NAV-átjáró (Java)  ──
 **Döntés (2026-10-23): a javaslatok szerint** (1a, 2, 3). Ehhez alapelv is tartozik (TERV.md D13): egy
 cég adatai soha nem érhetők el pusztán az adószám ismeretében. A kapcsolódási kód a közös belépés után is
 kötelező.
+
+**Állapot (2026-10-23): K7.1–K7.7 kész.**
+
+- eÁFA (eafa-m2m): Online Számla v3 kliens, NAV-átjáró, Könyvelő-hozzáférés kártya
+  (`docs/KONYVELO-ATJARO.md`).
+- Könyvelő:
+  - `nav_connections`, `nav_import_runs`, `nav_invoices` (0009); a 4.8 pont `nav_credentials` táblája elmaradt;
+  - `modules/nav`, `packages/domain/src/nav-import.ts`;
+  - felület: *Beállítások → NAV-kapcsolat*, *Könyvelés → NAV-import*, Teendők.
+- Megvalósítási döntések a jóváhagyott terven belül:
+  - a jóváhagyás piszkozatot is adhat (szerkeszthető, utána könyvelhető), nem csak könyvelt bizonylatot;
+  - a partner a teljes számlaadatból (teljes adószám) vehető fel;
+  - egy import legfeljebb 366 napot kérdez le.
 
 ### 10.3 Döntési pontok (eldöntve)
 

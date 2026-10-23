@@ -16,6 +16,7 @@ export function SettingsLayout() {
     { to: "/beallitasok/uzleti-evek", label: "Üzleti évek", show: Boolean(ws.company) },
     { to: "/beallitasok/szamlatukor", label: "Számlatükör", show: Boolean(ws.company) },
     { to: "/beallitasok/sablonok", label: "Sablonok", show: Boolean(ws.company) },
+    { to: "/beallitasok/nav-kapcsolat", label: "NAV-kapcsolat", show: Boolean(ws.company) },
     { to: "/beallitasok/felhasznalok", label: "Felhasználók", show: ws.can("members:manage") },
     { to: "/beallitasok/naplo", label: "Audit napló", show: ws.can("audit:read") },
     { to: "/beallitasok/jelszo", label: "Saját jelszó", show: true },

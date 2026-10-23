@@ -16,7 +16,7 @@ Magyar nyelvű, kettős könyvvitelt vezető webalkalmazás. A követelmények a
 | 4. Analitika, bank, pénztár | nyitott tételek, kiegyenlítés (rögzítéskor vagy utólag), korosítás, főkönyv–analitika egyeztetés, bank- és pénztárnapló, negatív pénztár tiltása, pénztármaximum | ✅ kész |
 | 5. Kimutatások | főkönyvi kivonat, naplófőkönyv, karton, mérleg („A”), eredménykimutatás (összköltség), előző év, Ft / ezer Ft, CSV, nyomtatás/PDF | ✅ kész |
 | 6. Zárás | havi időszakzárás és feloldás, zárlati állapot, évzárás előnézettel, nyitás, év újranyitása, nyitó egyenlegek átvétele; Excel (.xlsx) export | ✅ kész |
-| 7. NAV Online Számla import | | ⏳ |
+| 7. NAV Online Számla import | összekapcsolás az eÁFA NAV-kapcsolatával kapcsolódási kóddal, lekérdezés 35 napos részletekben, könyvelési javaslat (partner alapértelmezése vagy sablon), jóváhagyás piszkozatként vagy könyvelve, módosító és sztornó számla, partner felvétele a NAV-adatokból, Teendők | ✅ kész (az eÁFA NAV-átjáróján; a Könyvelőben nincs NAV-titok) |
 | 8. Mentés, export, Docker | | ⏳ |
 
 ## Felépítés
@@ -157,6 +157,34 @@ Kb. 10 perc. Indítás után (`npm run dev`, majd http://localhost:5173) üres a
 - *Beállítások → Audit napló*: minden lépés (piszkozat, könyvelés, sztornó) benne van; a „Sértetlenség ellenőrzése” gomb ellenőrzi a hash-láncot.
 - *Sötét mód* (fejléc ◐ gombja) és *mobil nézet* (keskeny ablak): a tételtábla a saját dobozában görgethető.
 - A lezárt időszakba könyvelés tiltása az adatbázisban már működik (tesztek ellenőrzik); a havi zárás felülete a 6. lépésben jön.
+
+## NAV Online Számla import
+
+A NAV-ot a Könyvelő maga soha nem hívja: a cég számláit az **eÁFA** kérdezi le a cég ott beállított
+NAV-kapcsolatával (eÁFA-előfizetés nem kell hozzá), a saját főkapcsolója (`EAFA_NAV_HIVAS_ENGEDELYEZVE`)
+mögött. A Könyvelőben nincs NAV-jelszó, -kulcs és NAV-cím. Részletek: eafa-m2m `docs/KONYVELO-ATJARO.md`.
+
+**Üzemeltetés:** a `.env`-ben `EAFA_ATJARO_URL` (az eÁFA címe) és `EAFA_KONYVELO_ATJARO_TITOK` (közös
+titok, legalább 32 karakter, ugyanaz, mint az eÁFA-ban). Ha hiányzik, a NAV-import nem érhető el, és a
+felület ezt kiírja.
+
+**Használat:**
+
+1. A cég eÁFA-felületén: *Ügyfél → Könyvelő-hozzáférés → Kapcsolódási kód készítése*. A kód egyszer
+   használható, 24 órán belül lejár. **Az adószám önmagában soha nem elég** a cég adataihoz.
+2. Könyvelőben: *Beállítások → NAV-kapcsolat* → a kód beírása → *Összekapcsolás* (Adminisztrátor vagy
+   Vezető könyvelő). A cég adószámát a program küldi ellenőrzésre.
+3. *Könyvelés → NAV-import*: irány és időszak → *Lekérdezés indítása*. A program 35 napos részletekben
+   kérdez, egy számlát csak egyszer vesz fel, és ismételhető.
+4. Egy számlára kattintva a **könyvelési javaslat**: a partner alapértelmezett kontírozása (vagy sablon),
+   a számla és a könyvelés dátuma. *Jóváhagyás és könyvelés*, vagy *Átvétel piszkozatként*. Módosító
+   számlánál helyesbítő bizonylat az eredetire, sztornó számlánál az eredeti sztornója. Ismeretlen
+   partnernél a program felajánlja a felvételt a NAV-adatokból.
+5. A *Kezdőlap Teendői* mutatják a jóváhagyásra váró számlákat és a hibás NAV-kapcsolatot (pl. lejárt
+   jelszó az eÁFA-ban).
+
+A NAV-adat könyvelési javaslat: az adatszolgáltatás általában nem azonos a számlával, a bizonylat az
+eredeti számla.
 
 ## Meglévő cég indítása évközben (nyitó egyenlegek)
 

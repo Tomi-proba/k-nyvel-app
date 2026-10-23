@@ -136,6 +136,24 @@ function TodoCard() {
       tone: "info",
     });
   }
+  if (t.nav?.connectionProblem) {
+    items.push({
+      key: "nav-connection",
+      to: "/beallitasok/nav-kapcsolat",
+      title: `NAV-kapcsolat: ${t.nav.connectionProblem.title}`,
+      detail: t.nav.connectionProblem.action ?? "A NAV-import addig nem működik.",
+      tone: "danger",
+    });
+  }
+  if (t.nav && t.nav.pending > 0) {
+    items.push({
+      key: "nav-pending",
+      to: "/konyveles/nav-import",
+      title: `${t.nav.pending} NAV-ból jött számla jóváhagyásra vár`,
+      detail: "Nézze át a könyvelési javaslatot; bizonylat csak a jóváhagyással lesz belőle.",
+      tone: "info",
+    });
+  }
   if (t.unmappedAccounts > 0) {
     items.push({
       key: "mapping",

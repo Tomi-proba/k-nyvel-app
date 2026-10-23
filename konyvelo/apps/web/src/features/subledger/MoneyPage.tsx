@@ -16,6 +16,7 @@ import { SubNav } from "./SubledgerPages";
 export const LEDGER_TABS = [
   { to: "/konyveles", label: "Bizonylatok", end: true },
   { to: "/konyveles/penzeszkozok", label: "Bank és pénztár" },
+  { to: "/konyveles/nav-import", label: "NAV-import" },
 ];
 
 /** Bank- és pénztárnapló futó egyenleggel; banknál kivonat-egyeztetés, pénztárnál a szabályzat szerinti maximum (PLAN 4.7). */

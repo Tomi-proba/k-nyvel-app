@@ -10,6 +10,7 @@ import { buildApp } from "../apps/api/src/app";
 import { loadConfig } from "../apps/api/src/config";
 import { createDb } from "../apps/api/src/core/db";
 import { runMigrations } from "../apps/api/src/core/migrate";
+import { digest, FakeGateway } from "../apps/api/test/fake-gateway";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 try {
@@ -30,11 +31,30 @@ await client.query("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; 
 await client.end();
 await runMigrations(ownerUrl);
 
+// Az eÁFA NAV-átjárója helyett ál-átjáró: a böngészős tesztek sem fordulnak az eÁFA-hoz vagy a NAV-hoz.
+// A tesztcég (10773381-2-44) kapcsolódási kódja és egy bejövő számla az Irodaszer Kft.-től.
+const gateway = new FakeGateway();
+await gateway.start();
+gateway.codes.set("E2EABCDEFGHJKMNP", "10773381");
+gateway.digests.INBOUND = [
+  digest({
+    invoiceNumber: "IR-2026/0101",
+    invoiceIssueDate: "2026-10-10",
+    invoiceDeliveryDate: "2026-10-10",
+    paymentDate: "2026-10-25",
+    supplierTaxNumber: "10537914",
+    supplierName: "Irodaszer Kft.",
+    invoiceNetAmountHuf: 50000,
+    invoiceVatAmountHuf: 13500,
+  }),
+];
+
 const port = Number(process.env.E2E_PORT ?? 3100);
 const config = {
   ...loadConfig({ DATABASE_URL: appUrl, LOG_LEVEL: "warn" }),
   port,
   webDistDir: path.join(here, "../apps/web/dist"),
+  eafaGateway: { url: gateway.url, secret: gateway.secret },
 };
 const { db } = createDb(appUrl);
 const app = await buildApp(config, db);

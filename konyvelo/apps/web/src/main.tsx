@@ -14,6 +14,7 @@ import { ClosingPage, OpeningPage } from "./features/closing/ClosingPages";
 import { BalanceSheetPage, IncomeStatementPage, JournalPage, LedgerPage, TrialBalancePage } from "./features/reports/ReportsPages";
 import { OpenItemsPage, ReconciliationPage } from "./features/subledger/SubledgerPages";
 import { HomePage } from "./features/home/HomePage";
+import { NavConnectionPage, NavImportPage, NavInvoicePage } from "./features/nav/NavPages";
 import { NewPartnerPage, PartnerDetailPage, PartnersPage } from "./features/partners/PartnersPages";
 import { AuditLogPage } from "./features/settings/AuditLogPage";
 import { FiscalYearsPage } from "./features/settings/FiscalYearsPage";
@@ -88,6 +89,8 @@ function Root() {
           <Route path="konyveles" element={<DocumentsPage />} />
           <Route path={NEW_ENTRY_PATH.slice(1)} element={<NewDocumentPage />} />
           <Route path="konyveles/penzeszkozok" element={<MoneyPage />} />
+          <Route path="konyveles/nav-import" element={<NavImportPage />} />
+          <Route path="konyveles/nav-import/:invoiceId" element={<NavInvoicePage />} />
           <Route path="konyveles/:documentId" element={<DocumentPage />} />
           <Route path="partnerek" element={<PartnersPage />} />
           <Route path="partnerek/uj" element={<NewPartnerPage />} />
@@ -107,6 +110,7 @@ function Root() {
             <Route path="uzleti-evek" element={<FiscalYearsPage />} />
             <Route path="szamlatukor" element={<ChartOfAccountsPage />} />
             <Route path="sablonok" element={<TemplatesPage />} />
+            <Route path="nav-kapcsolat" element={<NavConnectionPage />} />
             <Route path="felhasznalok" element={<MembersPage />} />
             <Route path="naplo" element={<AuditLogPage />} />
             <Route path="jelszo" element={<PasswordPage />} />

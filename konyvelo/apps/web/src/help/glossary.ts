@@ -127,6 +127,18 @@ export const GLOSSARY = {
     title: "Kontírozási sablon",
     text: "Gyakori könyvelések mintája (pl. szállítói számla: költség tartozik nettó, 466 tartozik áfa, 454 követel bruttó). Rögzítéskor az Alt+L-lel választható; a beírt összegből kitölti a sorokat.",
   },
+  navImport: {
+    title: "NAV-import",
+    text: "A NAV Online Számla rendszerébe beküldött számlák lekérdezése a cég eÁFA-beli NAV-kapcsolatán keresztül. A Könyvelő nem tárol NAV-jelszót; a lekérdezést az eÁFA végzi. A NAV-adat könyvelési javaslat: bizonylat csak az Ön jóváhagyásával lesz belőle.",
+  },
+  kapcsolodasiKod: {
+    title: "Kapcsolódási kód",
+    text: "Egyszer használható, 24 órán belül lejáró kód, amelyet a cég kezelője készít az eÁFA-ban (Ügyfél → Könyvelő-hozzáférés). Ezzel engedi meg, hogy a Könyvelő a cég NAV-kapcsolatán át lekérdezze a számlákat. A cég adószáma önmagában soha nem elég.",
+  },
+  adatszolgaltatas: {
+    title: "NAV-adatszolgáltatás",
+    text: "A számlázóprogram által a NAV-nak küldött adat. Általában nem azonos magával a számlával, ezért a könyvelés bizonylata az eredeti számla; a NAV-adat csak javaslat, vesse össze a számlával.",
+  },
 } as const;
 
 export type GlossaryKey = keyof typeof GLOSSARY;
