@@ -3,7 +3,7 @@ import pg from "pg";
 import { taxNumberCheckDigit } from "@konyvelo/domain";
 import { CSRF_HEADER } from "@konyvelo/shared";
 import { buildApp } from "../src/app";
-import { loadConfig } from "../src/config";
+import { loadConfig, type Config } from "../src/config";
 import { createDb, type Db } from "../src/core/db";
 import { runMigrations } from "../src/core/migrate";
 
@@ -58,9 +58,9 @@ export async function appQuery(sql: string, params: unknown[] = []): Promise<pg.
 
 export type TestContext = { app: FastifyInstance; db: Db; close: () => Promise<void> };
 
-export async function createTestApp(): Promise<TestContext> {
+export async function createTestApp(overrides: Partial<Config> = {}): Promise<TestContext> {
   const { appUrl } = testUrls();
-  const config = { ...loadConfig({ DATABASE_URL: appUrl, NODE_ENV: "test", LOG_LEVEL: "silent" }), webDistDir: null };
+  const config = { ...loadConfig({ DATABASE_URL: appUrl, NODE_ENV: "test", LOG_LEVEL: "silent" }), webDistDir: null, ...overrides };
   const { db, pool } = createDb(appUrl);
   const app = await buildApp(config, db);
   await app.ready();

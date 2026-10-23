@@ -290,6 +290,8 @@ export type DocumentListResponse = { items: DocumentListItemDto[]; total: number
 
 /** A Kezdőlap teendői. */
 export type TodosDto = {
+  /** NAV-import: jóváhagyásra váró számlák és az eÁFA NAV-kapcsolatának hibája (ha össze van kapcsolva). */
+  nav: { pending: number; connectionProblem: { title: string; action: string | null } | null } | null;
   drafts: Array<{
     id: string;
     docType: DocumentType;

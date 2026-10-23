@@ -39,6 +39,7 @@ import type { AppModule } from "../../core/modules";
 import { companies, documents, documentSequences, fiscalYears, journalLines, partners, periods, settlements, users } from "../../core/schema";
 import { cashOverLimit, firstNegativeCash, openItems } from "../subledger";
 import { listAccounts } from "../accounts";
+import { navTodos } from "../nav";
 
 type DocRow = typeof documents.$inferSelect;
 type LineRow = typeof journalLines.$inferSelect;
@@ -265,7 +266,14 @@ function listItem(r: ListRow, today: string): DocumentListItemDto {
 // ---------- Mentés (piszkozat) ----------
 
 /** Piszkozat mentése: a hivatkozások ellenőrzése, a fejadatok és a tételsorok írása. */
-async function saveDraft(tx: Tx, companyId: string, user: AuthUser, input: DocumentParsedInput, existing: DocRow | null): Promise<string> {
+async function saveDraft(
+  tx: Tx,
+  companyId: string,
+  user: AuthUser,
+  input: DocumentParsedInput,
+  existing: DocRow | null,
+  origin: "NAV_IMPORT" | null = null,
+): Promise<string> {
   const fy = await fiscalYearFor(tx, companyId, input.accountingDate);
   if (!fy) {
     throw validationError({
@@ -313,7 +321,8 @@ async function saveDraft(tx: Tx, companyId: string, user: AuthUser, input: Docum
     // Előző évet érintő hiba: a helyesbített bizonylat más üzleti évbe tartozik (K 5.4).
     affectsFiscalYearId: corrects && corrects.fiscalYearId !== fy.id ? corrects.fiscalYearId : null,
     templateId: input.templateId ?? null,
-    source: input.templateId ? "TEMPLATE" : "MANUAL",
+    // A NAV-ból jött bizonylat eredete a piszkozat szerkesztése után is megmarad.
+    source: origin ?? (existing?.source === "NAV_IMPORT" ? "NAV_IMPORT" : input.templateId ? "TEMPLATE" : "MANUAL"),
     settlementPlan: input.settlements,
     updatedAt: new Date(),
   };
@@ -653,6 +662,36 @@ export async function createSystemDocument(
   return postDocument(tx, companyId, doc!.id, user, ip, { reversal: true });
 }
 
+/**
+ * Új bizonylat (piszkozat, vagy `post: true` esetén azonnal könyvelve) a hívó tranzakciójában, audit
+ * naplóval. A NAV-import jóváhagyása is ezt használja, így ugyanazok az ellenőrzések futnak.
+ */
+export async function createDocument(
+  tx: Tx,
+  companyId: string,
+  user: AuthUser,
+  ip: string,
+  input: DocumentParsedInput,
+  origin: "NAV_IMPORT" | null = null,
+): Promise<string> {
+  const newId = await saveDraft(tx, companyId, user, input, null, origin);
+  const doc = await loadDoc(tx, companyId, newId);
+  const lines = await tx.select().from(journalLines).where(eq(journalLines.documentId, newId));
+  await writeAudit(tx, {
+    companyId,
+    userId: user.id,
+    action: "document.create",
+    entityType: "document",
+    entityId: newId,
+    after: { ...auditSummary(doc, lines), ...(origin ? { source: origin } : {}) },
+    ip,
+  });
+  if (input.post) await postDocument(tx, companyId, newId, user, ip);
+  return newId;
+}
+
+export { mapDbError as mapDocumentDbError };
+
 // ---------- Útvonalak ----------
 
 export const documentsModule: AppModule = {
@@ -707,24 +746,7 @@ export const documentsModule: AppModule = {
       const { companyId } = request.params;
       const { user } = await requireCompanyPermission(db, request, companyId, "ledger:post");
       const input = parseBody(documentInputSchema, request.body);
-      const id = await db
-        .transaction(async (tx) => {
-          const newId = await saveDraft(tx, companyId, user, input, null);
-          const doc = await loadDoc(tx, companyId, newId);
-          const lines = await tx.select().from(journalLines).where(eq(journalLines.documentId, newId));
-          await writeAudit(tx, {
-            companyId,
-            userId: user.id,
-            action: "document.create",
-            entityType: "document",
-            entityId: newId,
-            after: auditSummary(doc, lines),
-            ip: request.ip,
-          });
-          if (input.post) await postDocument(tx, companyId, newId, user, request.ip);
-          return newId;
-        })
-        .catch(mapDbError);
+      const id = await db.transaction((tx) => createDocument(tx, companyId, user, request.ip, input)).catch(mapDbError);
       return reply.code(201).send(await documentDto(db, companyId, id));
     });
 
@@ -826,6 +848,7 @@ export const documentsModule: AppModule = {
         return { count: list.length, total: list.reduce((s, i) => s + i.open, 0) };
       };
       return {
+        nav: await navTodos(db, companyId),
         overdueReceivables: overdue("RECEIVABLE"),
         overduePayables: overdue("PAYABLE"),
         unappliedPayments: open.unapplied.length,

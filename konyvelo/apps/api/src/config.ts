@@ -18,6 +18,12 @@ export type Config = {
   logLevel: string;
   /** További engedélyezett Origin-címek a CSRF-ellenőrzéshez (pl. a Codespace címe). */
   allowedOrigins: string[];
+  /**
+   * Az eÁFA NAV-átjárója (7. lépés). A Könyvelőben nincs NAV-titok és nincs NAV-cím: a NAV Online
+   * Számla adatait az eÁFA kérdezi le a cég NAV-kapcsolatával. Ha bármelyik hiányzik, a NAV-import
+   * nem érhető el (a felület ezt kiírja).
+   */
+  eafaGateway: { url: string; secret: string } | null;
 };
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -39,9 +45,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webDistDir: env.WEB_DIST_DIR ?? defaultWebDist,
     trustProxy: env.TRUST_PROXY === "true",
     logLevel: env.LOG_LEVEL ?? (production ? "info" : "warn"),
+    eafaGateway: gatewayConfig(env),
     allowedOrigins: (env.ALLOWED_ORIGINS ?? "")
       .split(",")
       .map((s) => s.trim().replace(/\/$/, ""))
       .filter(Boolean),
   };
+}
+
+/** A közös titok legalább 32 karakter, ugyanaz, mint az eÁFA-ban (EAFA_KONYVELO_ATJARO_TITOK). */
+function gatewayConfig(env: NodeJS.ProcessEnv): Config["eafaGateway"] {
+  const url = env.EAFA_ATJARO_URL?.trim().replace(/\/$/, "");
+  const secret = env.EAFA_KONYVELO_ATJARO_TITOK?.trim();
+  if (!url || !secret) return null;
+  if (secret.length < 32) {
+    throw new Error("Az EAFA_KONYVELO_ATJARO_TITOK legalább 32 karakter legyen (ugyanaz, mint az eÁFA-ban).");
+  }
+  return { url, secret };
 }

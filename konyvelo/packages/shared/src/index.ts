@@ -5,3 +5,4 @@ export * from "./audit-labels";
 export * from "./master-data";
 export * from "./documents";
 export * from "./reports";
+export * from "./nav";

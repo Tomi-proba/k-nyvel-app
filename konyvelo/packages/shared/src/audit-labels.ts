@@ -33,6 +33,12 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "template.create": "Kontírozási sablon létrehozása",
   "template.update": "Kontírozási sablon módosítása",
   "template.delete": "Kontírozási sablon törlése",
+  "nav.link": "Összekapcsolás az eÁFA NAV-kapcsolatával",
+  "nav.unlink": "Az eÁFA NAV-kapcsolat bontása",
+  "nav.import": "NAV-import indítása",
+  "nav_invoice.approve": "NAV-számla jóváhagyása",
+  "nav_invoice.ignore": "NAV-számla figyelmen kívül hagyása",
+  "nav_invoice.restore": "NAV-számla visszavétele",
 };
 
 export function auditActionLabel(action: string): string {

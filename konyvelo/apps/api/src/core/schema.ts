@@ -259,3 +259,75 @@ export const postingTemplates = pgTable("posting_templates", {
   createdBy: uuid("created_by").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+// ---------- NAV Online Számla import (7. lépés) ----------
+
+export type NavDirection = "INBOUND" | "OUTBOUND";
+export type NavEnvironment = "TEST" | "PRODUCTION";
+export type NavRemoteState = "OK" | "NOT_TESTED" | "BROKEN" | "UNREACHABLE" | "NOT_CONFIGURED" | "REVOKED";
+
+export const navConnections = pgTable("nav_connections", {
+  companyId: uuid("company_id").primaryKey(),
+  linkId: uuid("link_id").notNull(),
+  environment: text("environment").notNull().$type<NavEnvironment>(),
+  eafaTaxpayerName: text("eafa_taxpayer_name").notNull(),
+  eafaTaxNumber: text("eafa_tax_number").notNull(),
+  linkedAt: ts("linked_at").notNull().defaultNow(),
+  linkedBy: uuid("linked_by").notNull(),
+  remoteState: text("remote_state").$type<NavRemoteState>(),
+  remoteTitle: text("remote_title"),
+  remoteAction: text("remote_action"),
+  remoteCheckedAt: ts("remote_checked_at"),
+});
+
+export const navImportRuns = pgTable("nav_import_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  direction: text("direction").notNull().$type<NavDirection>(),
+  dateFrom: d("date_from").notNull(),
+  dateTo: d("date_to").notNull(),
+  status: text("status").notNull().default("RUNNING").$type<"RUNNING" | "DONE" | "FAILED">(),
+  windowsTotal: integer("windows_total").notNull(),
+  windowsDone: integer("windows_done").notNull().default(0),
+  foundCount: integer("found_count").notNull().default(0),
+  newCount: integer("new_count").notNull().default(0),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  startedAt: ts("started_at").notNull().defaultNow(),
+  startedBy: uuid("started_by").notNull(),
+  finishedAt: ts("finished_at"),
+});
+
+export const navInvoices = pgTable("nav_invoices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  direction: text("direction").notNull().$type<NavDirection>(),
+  invoiceNumber: text("invoice_number").notNull(),
+  operation: text("operation").notNull().$type<"CREATE" | "MODIFY" | "STORNO">(),
+  modificationIndex: integer("modification_index").notNull().default(0),
+  originalInvoiceNumber: text("original_invoice_number"),
+  invoiceCategory: text("invoice_category"),
+  supplierTaxNumber: text("supplier_tax_number").notNull(),
+  supplierName: text("supplier_name"),
+  customerTaxNumber: text("customer_tax_number"),
+  customerName: text("customer_name"),
+  issueDate: d("issue_date").notNull(),
+  deliveryDate: d("delivery_date"),
+  paymentDate: d("payment_date"),
+  paymentMethod: text("payment_method"),
+  currency: text("currency"),
+  netAmountHuf: bigint("net_amount_huf", { mode: "number" }),
+  vatAmountHuf: bigint("vat_amount_huf", { mode: "number" }),
+  completenessIndicator: boolean("completeness_indicator"),
+  insDate: ts("ins_date"),
+  rawDigest: jsonb("raw_digest").notNull(),
+  invoiceData: jsonb("invoice_data"),
+  invoiceXmlBase64: text("invoice_xml_base64"),
+  dataFetchedAt: ts("data_fetched_at"),
+  status: text("status").notNull().default("NEW").$type<"NEW" | "IGNORED">(),
+  ignoredReason: text("ignored_reason"),
+  documentId: uuid("document_id"),
+  firstRunId: uuid("first_run_id"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
