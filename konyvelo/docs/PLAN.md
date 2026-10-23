@@ -247,3 +247,62 @@ A 150–169. § és az 1–2. melléklet hatályos szövege alapján a `REQUIREM
 3. **Gyorsbillentyűk:** Alt+N (Ctrl nélkül), F2 és N (beviteli mezőn kívül) az új tételhez; Alt+L a sablonhoz. A gyorsbillentyűk a felületen tooltipben és súgóablakban is láthatók.
 4. **Szerepkörök:** Adminisztrátor, Vezető könyvelő, Könyvelő, Megtekintő.
 5. **Több cég:** egy telepítés több céget kezel (könyvelőiroda).
+
+## 10. A 7–8. lépés terve (2026-10-23, jóváhagyásra)
+
+**Kérés:**
+- **7. lépés:** NAV Online Számla import az eÁFA NAV-kapcsolatán keresztül, amely eÁFA-előfizetés nélkül
+  is működik. NAV-hívás csak a főkapcsolóval mehet ki.
+- **8. lépés:** mentés, cégexport, végső tesztek, súgó.
+
+Alap:
+- a közös döntés: AWEBOLDAL `EAFA-TERV.md` 4. pont, a) központi NAV-átjáró, előfizetéstől függetlenül;
+- REQUIREMENTS 10. pont;
+- a NAV Online Számla v3.0 interfészleírása és sémái (github.com/nav-gov-hu/Online-Invoice).
+
+### 10.1 Felépítés
+
+```
+Könyvelő (Node)  ──►  eÁFA szolgáltatás: NAV-átjáró (Java)  ──►  NAV Online Számla v3 (queryInvoiceDigest, queryInvoiceData)
+   import, javaslat,      titkok, aláírás, főkapcsoló,            csak a főkapcsolóval (EAFA_NAV_HIVAS_ENGEDELYEZVE),
+   jóváhagyás, könyvelés  1 kérés/mp, hívásnapló                  élesbe az éles kapcsolóval is
+```
+
+- **A Könyvelőben nincs NAV-titok és nincs NAV-cím.** Egy teszt is ellenőrzi, hogy a kódban nem szerepel
+  NAV-végpont. A 4.8 pontban tervezett `nav_credentials` tábla elmarad.
+- **Az átjáró az eÁFA meglévő NAV-kapcsolatát használja.** A NAV szerint az Online Számla technikai
+  felhasználója az eÁFA-hoz is jó, így cégenként egy kapcsolat van. Lekérdezéshez nem kell cserekulcs, ezt
+  továbbra sem kérjük be.
+- **Csak olvas:** az átjáró számlaadatot nem tárol, csak a hívásnaplót (ki, mikor, melyik cégnek, milyen
+  művelet, NAV-kérésazonosító).
+
+### 10.2 Lépések
+
+| # | Hol | Mit |
+|---|---|---|
+| K7.1 | eÁFA | Online Számla v3 kliens a `nav-m2m` modulban: a hivatalos XSD-k, kérés-aláírás (a jelszó SHA-512 hash-e, az aláírás SHA3-512), `queryInvoiceDigest` (lapozással, legfeljebb 35 napos ablakkal) és `queryInvoiceData`, GZIP-válasz, a NAV hibakódjai magyarul. Tesztek a NAV mintáin és ál-NAV-val. |
+| K7.2 | eÁFA | Átjáró-végpontok a Könyvelőnek: kiszolgálók közötti, aláírt kérések (lásd 10.3), kérésenként a cég összekapcsolásának ellenőrzése, 1 kérés/mp sorban állással, a két kapcsolóval, hívásnaplóval. |
+| K7.3 | eÁFA | **Könyvelő-hozzáférés** az ügyfél NAV-kapcsolat kártyáján: az eÁFA-ban a cég kezelője egy egyszer használható kapcsolódási kódot készít (lejár 24 órán belül), és bármikor visszavonhatja. Előfizetéstől függetlenül működik. A hibás kapcsolat (pl. lejárt jelszó) a Könyvelő Teendői közé is bekerül. |
+| K7.4 | Könyvelő | Cég → NAV-kapcsolat: a kód beírása. A Könyvelő ellenőrzi, hogy a cég adószáma egyezik a kapcsolatéval. Az összekapcsolás és a bontás az audit naplóba kerül. |
+| K7.5 | Könyvelő | Import (4.8): időszak és irány megadása, 35 napos ablakokra bontva; `nav_import_runs` és `nav_invoices` (egyedi kulcs: adószám + számlaszám + módosítási index). Háttérfeladatban fut, ismételhető. |
+| K7.6 | Könyvelő | Javaslat: partner párosítása vagy felajánlása létrehozásra, kontírozás a partner alapértelmezése vagy sablon szerint. **A felhasználó hagyja jóvá**, csak utána lesz könyvelt bizonylat (10.7). Módosító és sztornó számlánál az eredetihez kapcsolt helyesbítő vagy sztornó bizonylat (10.8). A nem teljes adatszolgáltatást (`completenessIndicator = false`) a program jelzi. |
+| K7.7 | mindkettő | Felület, súgó, tesztek: ál-átjáróval a Könyvelőben, ál-NAV-val az eÁFA-ban. NAV-hívás egyik tesztből sem mehet ki. |
+| K8.1 | Könyvelő | Teljes mentés (`pg_dump`, titkosítható, ütemezhető) és visszaállítási útmutató. |
+| K8.2 | Könyvelő | Cégexport ZIP-ben (JSON + CSV, csatolmányok, audit napló) SHA-256-os tartalomjegyzékkel (4.11). |
+| K8.3 | Könyvelő | Végső tesztek (teljes forgatókönyv, akadálymentesség) és felhasználói súgó. |
+
+### 10.3 Döntésre vár
+
+1. **Hogyan engedélyezi a cég, hogy a Könyvelő az ő NAV-kapcsolatán át kérdezzen?**
+   - **a) Javaslat:** egyszer használható kapcsolódási kód az eÁFA-ból, és egyeznie kell az adószámnak is.
+   - b) Csak az adószám egyezése. Egyszerűbb, de bárki, aki a Könyvelőben felveszi ugyanazt az adószámot,
+     lekérhetné a számláit.
+   - Amíg nincs közös belépés (2–3. lépés), a cégnek eÁFA-fiók kell a NAV-kapcsolat beállításához
+     (előfizetés nem). A közös felülettel ez egy helyre kerül.
+2. **Hogyan azonosítja magát a Könyvelő szervere az átjárónál?**
+   - **Javaslat:** telepítésenként egy közös titok környezeti változóban (soha nem a kódban vagy
+     fájlban), HMAC-kel aláírt kérések időbélyeggel, az ismételt kérések ellen.
+   - Később a közös belépés szolgáltatásfiókja válthatja le.
+3. **A számla tételsorait** (`queryInvoiceData`) is letöltsük, vagy elég a kivonat (`queryInvoiceDigest`)?
+   - **Javaslat:** a kivonat a javaslathoz, a teljes számlaadat kérésre, egy számlánál. Így kevesebb hívás
+     megy a NAV-hoz (1 kérés/mp).
