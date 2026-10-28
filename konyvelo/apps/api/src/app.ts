@@ -9,6 +9,7 @@ import { loadSession, SESSION_COOKIE } from "./core/auth";
 import type { Db } from "./core/db";
 import { AppError } from "./core/errors";
 import type { AppModule } from "./core/modules";
+import { createFileStore, type FileStore } from "./core/filestore";
 import { accountsModule } from "./modules/accounts";
 import { auditModule } from "./modules/audit";
 import { authModule } from "./modules/auth";
@@ -20,6 +21,7 @@ import { closingModule } from "./modules/closing";
 import { reportsModule } from "./modules/reports";
 import { subledgerModule } from "./modules/subledger";
 import { templatesModule } from "./modules/templates";
+import { attachmentsModule } from "./modules/attachments";
 import { navModule } from "./modules/nav";
 import { exportModule } from "./modules/export";
 
@@ -35,6 +37,7 @@ export const MODULES: AppModule[] = [
   subledgerModule,
   reportsModule,
   closingModule,
+  attachmentsModule,
   navModule,
   exportModule,
   auditModule,
@@ -50,7 +53,7 @@ function originHost(origin: string): string | null {
   }
 }
 
-export async function buildApp(config: Config, db: Db): Promise<FastifyInstance> {
+export async function buildApp(config: Config, db: Db, files: FileStore = createFileStore(config.fileStore)): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: config.logLevel },
     trustProxy: config.trustProxy,
@@ -94,6 +97,9 @@ export async function buildApp(config: Config, db: Db): Promise<FastifyInstance>
       return reply.code(err.statusCode).send(err.toJSON());
     }
     const statusCode = (err as { statusCode?: number }).statusCode;
+    if (statusCode === 413) {
+      return reply.code(413).send({ error: { code: "TOO_LARGE", message: "A feltöltött fájl túl nagy. Kisebb fájlt válasszon (pl. kisebb felbontással szkennelve)." } });
+    }
     if (statusCode && statusCode >= 400 && statusCode < 500) {
       // Pl. hibás JSON, nem támogatott tartalomtípus, túl nagy kérés.
       return reply.code(statusCode).send({
@@ -107,7 +113,7 @@ export async function buildApp(config: Config, db: Db): Promise<FastifyInstance>
   });
 
   for (const mod of MODULES) {
-    await mod.register(app, { db, config });
+    await mod.register(app, { db, config, files });
   }
 
   app.get("/api/health", async () => ({ ok: true }));

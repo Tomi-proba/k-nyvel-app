@@ -36,10 +36,11 @@ import { requireCompanyPermission, type AuthUser } from "../../core/auth";
 import { pgErrorCode, PG_RAISE, PG_UNIQUE_VIOLATION, type Executor, type Tx } from "../../core/db";
 import { assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
 import type { AppModule } from "../../core/modules";
-import { companies, documents, documentSequences, fiscalYears, journalLines, partners, periods, settlements, users } from "../../core/schema";
+import { attachments, companies, documents, documentSequences, fiscalYears, journalLines, partners, periods, settlements, users } from "../../core/schema";
 import { cashOverLimit, firstNegativeCash, openItems } from "../subledger";
 import { listAccounts } from "../accounts";
 import { navTodos } from "../nav";
+import { attachmentHashPart, documentAttachments, draftAttachments, lockAttachmentsOnPosting } from "../attachments";
 
 type DocRow = typeof documents.$inferSelect;
 type LineRow = typeof journalLines.$inferSelect;
@@ -172,6 +173,7 @@ export async function documentDto(db: Executor, companyId: string, id: string): 
     postedAt: doc.postedAt?.toISOString() ?? null,
     postedByName: doc.postedBy ? (names.get(doc.postedBy) ?? null) : null,
     contentHash: doc.contentHash,
+    attachments: await documentAttachments(db, doc.id),
     deadline: deadlineOf(doc, touches(lines, accounts)),
     settlementPlan: doc.settlementPlan,
     settlements: pairs.rows.map((r) => ({
@@ -382,6 +384,59 @@ function auditSummary(doc: Pick<DocRow, "docType" | "description" | "accountingD
  * cégenkénti hash-lánc következő eleme. A cégszintű zár sorba rendezi az
  * egyidejű könyveléseket (sorszám és lánc).
  */
+type HashAccounts = Map<string, { number: string }>;
+
+/**
+ * A könyvelt bizonylat tartalmi lenyomata (hash-lánc, PLAN 4.6). A csatolmányok leírása (SHA-256-tal)
+ * csak akkor kerül bele, ha van: a korábbi bizonylatok lenyomata így változatlan.
+ */
+export function documentHash(p: {
+  doc: DocRow;
+  prevHash: string | null;
+  serialNumber: string;
+  postedAt: Date;
+  postedBy: string;
+  lines: LineRow[];
+  accounts: HashAccounts;
+  attachments: Array<Parameters<typeof attachmentHashPart>[0]>;
+}): string {
+  const { doc } = p;
+  return sha256(
+    canonicalJson({
+      v: 1,
+      prevHash: p.prevHash,
+      companyId: doc.companyId,
+      id: doc.id,
+      serialNumber: p.serialNumber,
+      docType: doc.docType,
+      partnerId: doc.partnerId,
+      externalNumber: doc.externalNumber,
+      description: doc.description,
+      issueDate: doc.issueDate,
+      fulfillmentDate: doc.fulfillmentDate,
+      accountingDate: doc.accountingDate,
+      dueDate: doc.dueDate,
+      currency: doc.currency,
+      fxAmount: doc.fxAmount,
+      fxRate: doc.fxRate,
+      reversesDocumentId: doc.reversesDocumentId,
+      correctsDocumentId: doc.correctsDocumentId,
+      postedAt: p.postedAt.toISOString(),
+      postedBy: p.postedBy,
+      lines: p.lines.map((l) => ({
+        lineNo: l.lineNo,
+        accountId: l.accountId,
+        accountNumber: p.accounts.get(l.accountId!)?.number,
+        side: l.side,
+        amount: l.amount,
+        partnerId: l.partnerId,
+        description: l.description,
+      })),
+      ...(p.attachments.length ? { attachments: p.attachments.map(attachmentHashPart) } : {}),
+    }),
+  );
+}
+
 export async function postDocument(tx: Tx, companyId: string, docId: string, user: AuthUser, ip: string, opts: { reversal?: boolean } = {}): Promise<DocRow> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"documents-post:" + companyId}, 0))`);
   const doc = await loadDoc(tx, companyId, docId, true);
@@ -471,39 +526,11 @@ export async function postDocument(tx: Tx, companyId: string, docId: string, use
     .limit(1);
   const prevHash = prev?.hash ?? null;
   const postedAt = new Date();
-  const contentHash = sha256(
-    canonicalJson({
-      v: 1,
-      prevHash,
-      companyId,
-      id: doc.id,
-      serialNumber,
-      docType: doc.docType,
-      partnerId: doc.partnerId,
-      externalNumber: doc.externalNumber,
-      description: doc.description,
-      issueDate: doc.issueDate,
-      fulfillmentDate: doc.fulfillmentDate,
-      accountingDate: doc.accountingDate,
-      dueDate: doc.dueDate,
-      currency: doc.currency,
-      fxAmount: doc.fxAmount,
-      fxRate: doc.fxRate,
-      reversesDocumentId: doc.reversesDocumentId,
-      correctsDocumentId: doc.correctsDocumentId,
-      postedAt: postedAt.toISOString(),
-      postedBy: user.id,
-      lines: lines.map((l) => ({
-        lineNo: l.lineNo,
-        accountId: l.accountId,
-        accountNumber: accounts.get(l.accountId!)?.number,
-        side: l.side,
-        amount: l.amount,
-        partnerId: l.partnerId,
-        description: l.description,
-      })),
-    }),
-  );
+  // A könyvelés előtt feltöltött csatolmányok a bizonylat lenyomatába számítanak (K9).
+  const atts = await draftAttachments(tx, doc.id);
+  const contentHash = documentHash({ doc, prevHash, serialNumber, postedAt, postedBy: user.id, lines, accounts, attachments: atts });
+  // A trigger miatt a bizonylat könyveltté válása előtt.
+  await lockAttachmentsOnPosting(tx, atts, contentHash);
 
   const [posted] = await tx
     .update(documents)
@@ -696,7 +723,7 @@ export { mapDbError as mapDocumentDbError };
 
 export const documentsModule: AppModule = {
   name: "documents",
-  register(app, { db }) {
+  register(app, { db, files }) {
     const base = "/api/companies/:companyId/documents";
     type P = { Params: { companyId: string } };
     type PD = { Params: { companyId: string; documentId: string } };
@@ -789,11 +816,12 @@ export const documentsModule: AppModule = {
     app.delete<PD>(`${base}/:documentId`, async (request) => {
       const { companyId, documentId } = request.params;
       const { user } = await requireCompanyPermission(db, request, companyId, "ledger:post");
-      await db
+      const removed = await db
         .transaction(async (tx) => {
           const doc = await loadDoc(tx, companyId, documentId, true);
           if (doc.status === "POSTED") throw conflict("Könyvelt bizonylat nem törölhető. Javítani sztornóval vagy helyesbítő bizonylattal lehet.");
           const lines = await tx.select().from(journalLines).where(eq(journalLines.documentId, doc.id));
+          const atts = await tx.delete(attachments).where(eq(attachments.documentId, doc.id)).returning({ key: attachments.storageKey, fileName: attachments.fileName });
           await tx.delete(journalLines).where(eq(journalLines.documentId, doc.id));
           await tx.delete(documents).where(eq(documents.id, doc.id));
           await writeAudit(tx, {
@@ -802,11 +830,14 @@ export const documentsModule: AppModule = {
             action: "document.delete",
             entityType: "document",
             entityId: doc.id,
-            before: auditSummary(doc, lines),
+            before: { ...auditSummary(doc, lines), ...(atts.length ? { attachments: atts.map((a) => a.fileName) } : {}) },
             ip: request.ip,
           });
+          return atts;
         })
         .catch(mapDbError);
+      // A fájlok csak a sikeres törlés után; ha ez nem sikerül, legfeljebb egy gazdátlan fájl marad.
+      for (const a of removed) await files.delete(a.key).catch(() => undefined);
       return { ok: true };
     });
 

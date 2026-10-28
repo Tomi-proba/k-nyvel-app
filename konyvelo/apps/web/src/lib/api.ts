@@ -13,21 +13,42 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(path, {
+  return parse<T>(
+    await send(path, {
       method,
-      credentials: "same-origin",
-      headers: {
-        Accept: "application/json",
-        ...(method !== "GET" ? { [CSRF_HEADER]: "1", "Content-Type": "application/json" } : {}),
-      },
+      headers: { Accept: "application/json", ...(method !== "GET" ? { [CSRF_HEADER]: "1", "Content-Type": "application/json" } : {}) },
       body: method !== "GET" ? JSON.stringify(body ?? {}) : undefined,
-    });
+    }),
+  );
+}
+
+async function send(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, { credentials: "same-origin", ...init });
   } catch {
     throw new ApiError(0, "NETWORK", "Nem sikerült kapcsolódni a szerverhez. Ellenőrizze az internetkapcsolatot.");
   }
+}
 
+/** Fájl feltöltése nyers bájtokként; a fájlnév az X-File-Name fejlécben (URI-kódolva). */
+export async function uploadFile<T>(path: string, file: File): Promise<T> {
+  return parse<T>(
+    await send(path, {
+      method: "POST",
+      headers: { Accept: "application/json", [CSRF_HEADER]: "1", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(file.name) },
+      body: file,
+    }),
+  );
+}
+
+/** Fájl letöltése (pl. előnézethez); hiba esetén a szerver magyar üzenetével. */
+export async function getBlob(path: string): Promise<Blob> {
+  const res = await send(path, { method: "GET" });
+  if (!res.ok) return parse<never>(res);
+  return res.blob();
+}
+
+async function parse<T>(res: Response): Promise<T> {
   const text = await res.text();
   let data: unknown = null;
   try {

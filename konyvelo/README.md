@@ -217,13 +217,16 @@ Ha egy nyitó tétel hibás, a nyitó bizonylat (NYIT-…) sztornózható, és a
 
 ## Mentés és visszaállítás
 
-**Teljes mentés** (minden cég, felhasználó, audit napló):
+**Teljes mentés** (minden cég, felhasználó, audit napló és a csatolmányok fájljai):
 
 ```bash
 npm run backup
 ```
 
-A mentés a `mentesek/` mappába kerül (`BACKUP_DIR`), mellé egy `.sha256` ellenőrzőfájl. Ha a `.env`-ben meg
+A mentés a `mentesek/` mappába kerül (`BACKUP_DIR`), mellé egy `.sha256` ellenőrzőfájl. Egyetlen fájl
+(`.tar`, titkosítva `.tar.enc`): benne az adatbázis, a csatolmányok és egy tartalomjegyzék, minden fájl
+SHA-256 lenyomatával. Ha egy csatolmány fájlja hiányzik vagy megváltozott a tárolóban, a mentés elkészül,
+de figyelmeztet. A korábbi `.dump` / `.dump.enc` mentések is visszaállíthatók. Ha a `.env`-ben meg
 van adva a `BACKUP_PASSPHRASE` (legalább 12 karakter), a mentés **titkosítva** készül (AES-256-GCM):
 jelszó nélkül nem olvasható, és ha megsérül, a visszaállítás megtagadja. A jelszót tartsa a mentéstől
 külön helyen; nélküle a mentés nem állítható vissza. A legutóbbi `BACKUP_KEEP` darab (alapból 30) marad
@@ -241,11 +244,12 @@ lévő mentés is.
 
 **Visszaállítás:**
 
-1. Ellenőrizze a mentést: `npm run restore -- mentesek/konyvelo-20261028-021500.dump.enc --ellenorzes`
+1. Ellenőrizze a mentést: `npm run restore -- mentesek/konyvelo-20261028-021500.tar.enc --ellenorzes`
 2. Állítsa le a programot.
-3. Állítsa vissza: `npm run restore -- mentesek/konyvelo-20261028-021500.dump.enc --igen`
+3. Állítsa vissza: `npm run restore -- mentesek/konyvelo-20261028-021500.tar.enc --igen`
    (alapból a `DATABASE_MIGRATION_URL` adatbázisába; másikba: `--cel <kapcsolat>`). A cél adatbázis minden
-   adata törlődik, és a mentés tartalma kerül a helyére, egyetlen tranzakcióban.
+   adata törlődik, és a mentés tartalma kerül a helyére, egyetlen tranzakcióban. A csatolmányok a
+   beállított fájltárolóba (`FAJLTAR`) kerülnek vissza.
 4. Indítsa el a programot, és nézze meg: *Beállítások → Audit napló → Sértetlenség ellenőrzése*.
 
 Érdemes negyedévente egy próba-visszaállítást végezni egy külön adatbázisba (`--cel`).
@@ -255,6 +259,26 @@ lévő mentés is.
 lenyomatát tartalmazza. Ellenőrzés: ugyanott az *Export ellenőrzése* résznél, vagy parancssorból
 `npm run export:check -- <fájl.zip>`. A tartalomjegyzék lenyomata az audit naplóba is bekerül, így az
 is kiderül, ha valaki a tartalomjegyzéket is átírta.
+
+## Csatolmányok
+
+A bizonylathoz (piszkozathoz és könyvelthez is) PDF, JPEG vagy PNG fájl tölthető fel a bizonylat oldalán,
+és ugyanott, párbeszédablakban meg is nézhető.
+
+- **Típus és méret:** a típust a fájl tartalma dönti el (a kiterjesztésnek egyeznie kell vele); a
+  méretkorlát `CSATOLMANY_MAX_MB` (alapból 10 MB).
+- **Lenyomat:** minden fájl SHA-256 lenyomatot kap. A könyvelés előtt feltöltött csatolmányok lenyomata a
+  bizonylat tartalmi lenyomatába (hash-lánc) számít; minden könyvelt bizonylat csatolmánya egy cégenkénti
+  csatolmány-láncba is bekerül. *Beállítások → Audit napló → Sértetlenség ellenőrzése* kimutatja, ha egy
+  fájlt kicseréltek, töröltek, vagy az adatait az adatbázisban átírták. A fájl minden megnyitásakor is
+  ellenőrizzük a lenyomatot.
+- **Védelem:** könyvelt bizonylat csatolmánya nem törölhető és nem módosítható (Szt. 169. §; az adatbázis is
+  tiltja), újabb csatolmány feltölthető mellé. A csatolmány nem minősül hiteles elektronikus másolatnak.
+- **Tárolás:** beállításból cserélhető, kódmódosítás nélkül. Alapból helyi mappa (`FAJLTAR=local`,
+  `FAJLTAR_MAPPA`, alapból `storage/`); S3-kompatibilis tárolóhoz (pl. Supabase Storage) `FAJLTAR=s3` és a
+  `FAJLTAR_S3_...` beállítások (lásd `.env.example`).
+- A csatolmányok a cégexportba (`csatolmanyok/` mappa, `csatolmanyok.json`) és a teljes mentésbe is
+  bekerülnek.
 
 **Súgó:** a fejléc *Súgó* gombja: a fő műveletek lépésről lépésre, kezdőknek.
 

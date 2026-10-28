@@ -20,6 +20,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "document.delete": "Bizonylat-piszkozat törlése",
   "document.post": "Bizonylat könyvelése",
   "document.reverse": "Bizonylat sztornózása",
+  "attachment.upload": "Csatolmány feltöltése",
+  "attachment.delete": "Csatolmány törlése (piszkozatról)",
   "period.close": "Havi időszak lezárása",
   "period.reopen": "Havi időszak feloldása",
   "fiscal_year.start_closing": "Zárlat indítása",

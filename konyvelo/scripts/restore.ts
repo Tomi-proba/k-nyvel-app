@@ -5,7 +5,8 @@
  *   --cel         a cél adatbázis TULAJDONOSÁNAK kapcsolata (alapból: DATABASE_MIGRATION_URL)
  *   --igen        megerősítés: a cél adatbázis MINDEN adata törlődik, és a mentés tartalma kerül a helyére
  *
- * Titkosított mentésnél a jelszó a BACKUP_PASSPHRASE környezeti változóból jön.
+ * Titkosított mentésnél a jelszó a BACKUP_PASSPHRASE környezeti változóból jön. A csatolmányok a
+ * beállított fájltárolóba (FAJLTAR, FAJLTAR_...) kerülnek vissza.
  * Visszaállítás előtt állítsa le a programot, utána indítsa újra.
  */
 import path from "node:path";
@@ -13,6 +14,8 @@ import { fileURLToPath } from "node:url";
 import { BackupError, restoreBackup, verifyBackup } from "../apps/api/src/core/backup";
 import { writeAudit } from "../apps/api/src/core/audit";
 import { createDb } from "../apps/api/src/core/db";
+import { createFileStore } from "../apps/api/src/core/filestore";
+import { fileStoreConfig } from "../apps/api/src/config";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 try {
@@ -38,6 +41,8 @@ try {
   if (flag("--ellenorzes")) {
     const r = verifyBackup(path.resolve(file), passphrase);
     console.log(`A mentés rendben van. SHA-256: ${r.sha256}${r.checksumFile ? " (egyezik a .sha256 fájllal)" : " (nincs mellette .sha256 fájl)"}`);
+    console.log(r.format === "tar" ? `Csatolmányok: ${r.attachments} db, mindegyik lenyomata egyezik.` : "Régi (csak adatbázist tartalmazó) mentés.");
+    if (r.attachmentProblems) console.error(`FIGYELEM: ${r.attachmentProblems} csatolmány már a mentés készítésekor hiányzott vagy megváltozott.`);
     process.exit(0);
   }
   const target = option("--cel") ?? process.env.DATABASE_MIGRATION_URL;
@@ -48,7 +53,7 @@ try {
     console.error("Ha biztos benne, futtassa újra a --igen kapcsolóval. Előtte állítsa le a programot.");
     process.exit(2);
   }
-  const r = await restoreBackup({ file: path.resolve(file), targetUrl: target, passphrase });
+  const r = await restoreBackup({ file: path.resolve(file), targetUrl: target, passphrase, files: createFileStore(fileStoreConfig(process.env)) });
   const { db, pool } = createDb(target);
   try {
     await db.transaction((tx) =>
@@ -58,7 +63,7 @@ try {
         action: "backup.restore",
         entityType: "backup",
         entityId: path.basename(file),
-        after: { file: path.basename(file), sha256: r.sha256 },
+        after: { file: path.basename(file), sha256: r.sha256, attachments: r.attachments },
       }),
     );
   } finally {

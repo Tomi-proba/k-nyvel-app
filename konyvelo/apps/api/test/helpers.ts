@@ -1,4 +1,7 @@
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import pg from "pg";
 import { taxNumberCheckDigit } from "@konyvelo/domain";
 import { CSRF_HEADER } from "@konyvelo/shared";
@@ -56,20 +59,29 @@ export async function appQuery(sql: string, params: unknown[] = []): Promise<pg.
   }
 }
 
-export type TestContext = { app: FastifyInstance; db: Db; close: () => Promise<void> };
+export type TestContext = { app: FastifyInstance; db: Db; config: Config; close: () => Promise<void> };
 
 export async function createTestApp(overrides: Partial<Config> = {}, databaseUrl?: string): Promise<TestContext> {
   const appUrl = databaseUrl ?? testUrls().appUrl;
-  const config = { ...loadConfig({ DATABASE_URL: appUrl, NODE_ENV: "test", LOG_LEVEL: "silent" }), webDistDir: null, ...overrides };
+  // A tesztek csatolmányai egy ideiglenes mappába kerülnek (a teszt végén törlődik).
+  const storageDir = mkdtempSync(path.join(tmpdir(), "konyvelo-csatolmany-teszt-"));
+  const config = {
+    ...loadConfig({ DATABASE_URL: appUrl, NODE_ENV: "test", LOG_LEVEL: "silent" }),
+    webDistDir: null,
+    fileStore: { kind: "local" as const, dir: storageDir },
+    ...overrides,
+  };
   const { db, pool } = createDb(appUrl);
   const app = await buildApp(config, db);
   await app.ready();
   return {
     app,
     db,
+    config,
     close: async () => {
       await app.close();
       await pool.end();
+      rmSync(storageDir, { recursive: true, force: true });
     },
   };
 }

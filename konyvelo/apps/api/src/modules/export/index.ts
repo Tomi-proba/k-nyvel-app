@@ -5,9 +5,11 @@ import { EXPORT_FORMAT, EXPORT_MANIFEST, EXPORT_SUMS, type CompanyExportDto, typ
 import { writeAudit } from "../../core/audit";
 import { requireCompanyPermission } from "../../core/auth";
 import type { Executor } from "../../core/db";
+import type { FileStore } from "../../core/filestore";
 import type { AppModule } from "../../core/modules";
 import {
   accounts,
+  attachments,
   auditLog,
   companies,
   companyMemberships,
@@ -74,7 +76,11 @@ Fájlok:
   manifest.json             tartalomjegyzék: minden fájl mérete és SHA-256 lenyomata
   sha256sums.txt            ugyanez szabványos formában
 
-Csatolmányok: a program jelenleg nem tárol csatolmányt (a bizonylatok eredetije a cégnél van).
+  csatolmanyok/              a bizonylatok csatolmányai (PDF, kép), bizonylatonként külön mappában
+  csatolmanyok.json / .csv  a csatolmányok listája: bizonylat, eredeti fájlnév, SHA-256 lenyomat
+
+A csatolmány SHA-256 lenyomata a feltöltéskor rögzített érték; a manifest.json a csomagba tett fájlét
+tartalmazza. Ha a kettő eltér, vagy a fájl hiányzik, a csatolmanyok.json „allapot” mezője jelzi.
 
 Ellenőrzés:
   - a Könyvelőben: Beállítások → Mentés és export → Export ellenőrzése;
@@ -102,13 +108,17 @@ async function collect(db: Executor, companyId: string) {
   const [connection] = await db.select().from(navConnections).where(eq(navConnections.companyId, companyId));
   const runs = await db.select().from(navImportRuns).where(eq(navImportRuns.companyId, companyId)).orderBy(asc(navImportRuns.startedAt));
   const navRows = await db.select().from(navInvoices).where(eq(navInvoices.companyId, companyId)).orderBy(asc(navInvoices.issueDate), asc(navInvoices.invoiceNumber));
+  const attachmentRows = await db.select().from(attachments).where(eq(attachments.companyId, companyId)).orderBy(asc(attachments.uploadedAt), asc(attachments.id));
   const audit = await db.select().from(auditLog).where(eq(auditLog.companyId, companyId)).orderBy(asc(auditLog.id));
-  const userIds = [...new Set([...audit.map((a) => a.userId), ...docRows.flatMap((d) => [d.createdBy, d.postedBy])].filter((v): v is string => Boolean(v)))];
+  const userIds = [...new Set([...audit.map((a) => a.userId), ...docRows.flatMap((d) => [d.createdBy, d.postedBy]), ...attachmentRows.map((a) => a.uploadedBy)].filter((v): v is string => Boolean(v)))];
   const names = new Map(userIds.length ? (await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds))).map((u) => [u.id, u.name]) : []);
-  return { company: company!, members, years, periodRows, accountRows, partnerRows, docRows, lineRows, settlementRows, templateRows, connection, runs, navRows, audit, names };
+  return { company: company!, members, years, periodRows, accountRows, partnerRows, docRows, lineRows, settlementRows, templateRows, connection, runs, navRows, attachmentRows, audit, names };
 }
 
-export async function buildCompanyExport(db: Executor, companyId: string, generatedBy: string, now = new Date()) {
+/** A ZIP-beli útvonal része: betű, szám, pont, kötőjel; minden más aláhúzás (útvonal-trükk sem lehet). */
+const safePart = (s: string) => s.normalize("NFC").replace(/[^\p{L}\p{N}._-]+/gu, "_").replace(/^\.+/, "_").slice(0, 120);
+
+export async function buildCompanyExport(db: Executor, files: FileStore, companyId: string, generatedBy: string, now = new Date()) {
   const d = await collect(db, companyId);
   const accountNo = new Map(d.accountRows.map((a) => [a.id, a.number]));
   const partnerName = new Map(d.partnerRows.map((p) => [p.id, p.name]));
@@ -116,7 +126,23 @@ export async function buildCompanyExport(db: Executor, companyId: string, genera
   const linesByDoc = new Map<string, typeof d.lineRows>();
   for (const l of d.lineRows) linesByDoc.set(l.documentId, [...(linesByDoc.get(l.documentId) ?? []), l]);
 
-  const files: Array<{ name: string; data: Buffer }> = [
+  // Csatolmányok: a fájlok a tárolóból, a feltöltéskori lenyomattal összevetve.
+  const attachmentFiles: Array<{ name: string; data: Buffer }> = [];
+  const attachmentList = [];
+  for (const a of d.attachmentRows) {
+    const data = await files.get(a.storageKey);
+    const folder = safePart(docSerial.get(a.documentId) ?? `piszkozat-${a.documentId.slice(0, 8)}`);
+    const path = `csatolmanyok/${folder}/${a.id.slice(0, 8)}-${safePart(a.fileName)}`;
+    const allapot = !data ? "HIANYZIK" : sha256(data) === a.sha256 ? "RENDBEN" : "MEGVALTOZOTT";
+    if (data) attachmentFiles.push({ name: path, data });
+    attachmentList.push({
+      id: a.id, documentId: a.documentId, serialNumber: docSerial.get(a.documentId) ?? null, fileName: a.fileName, mimeType: a.mimeType, sizeBytes: a.sizeBytes,
+      sha256: a.sha256, uploadedAt: iso(a.uploadedAt), uploadedByName: d.names.get(a.uploadedBy) ?? null, inDocumentHash: a.inDocumentHash,
+      chainSeq: a.chainSeq, prevHash: a.prevHash, chainHash: a.chainHash, path: data ? path : null, allapot,
+    });
+  }
+
+  const out: Array<{ name: string; data: Buffer }> = [
     { name: "README.txt", data: Buffer.from(README(d.company, now.toISOString()), "utf8") },
     { name: "ceg.json", data: json({ ...d.company, createdAt: iso(d.company.createdAt), updatedAt: iso(d.company.updatedAt) }) },
     { name: "felhasznalok.json", data: json(d.members.map((m) => ({ ...m, since: iso(m.since) }))) },
@@ -180,6 +206,13 @@ export async function buildCompanyExport(db: Executor, companyId: string, genera
         d.audit.map((a) => [a.id, a.at.toISOString(), a.userId ? d.names.get(a.userId) : null, a.action, a.entityType, a.entityId, a.before ? JSON.stringify(a.before) : null,
           a.after ? JSON.stringify(a.after) : null, a.ip, a.prevHash, a.hash])),
     },
+    { name: "csatolmanyok.json", data: json(attachmentList) },
+    {
+      name: "csatolmanyok.csv",
+      data: csv(["Bizonylat", "Fájlnév", "Típus", "Méret (bájt)", "SHA-256", "Feltöltve", "Feltöltötte", "A bizonylat lenyomatában", "Fájl a csomagban", "Állapot"],
+        attachmentList.map((a) => [a.serialNumber ?? "(piszkozat)", a.fileName, a.mimeType, a.sizeBytes, a.sha256, a.uploadedAt, a.uploadedByName, a.inDocumentHash ? "igen" : "nem", a.path, a.allapot])),
+    },
+    ...attachmentFiles,
   ];
 
   const manifest: ExportManifest = {
@@ -195,13 +228,14 @@ export async function buildCompanyExport(db: Executor, companyId: string, genera
       uzletiEvek: d.years.length,
       navSzamlak: d.navRows.length,
       auditBejegyzesek: d.audit.length,
+      csatolmanyok: d.attachmentRows.length,
     },
-    files: files.map((f) => ({ path: f.name, bytes: f.data.length, sha256: sha256(f.data) })),
+    files: out.map((f) => ({ path: f.name, bytes: f.data.length, sha256: sha256(f.data) })),
   };
   const manifestData = json(manifest);
   const manifestSha256 = sha256(manifestData);
   const sums = Buffer.from([...manifest.files.map((f) => `${f.sha256}  ${f.path}`), `${manifestSha256}  ${EXPORT_MANIFEST}`].join("\n") + "\n", "utf8");
-  const zip = buildZip([...files, { name: EXPORT_MANIFEST, data: manifestData }, { name: EXPORT_SUMS, data: sums }], now);
+  const zip = buildZip([...out, { name: EXPORT_MANIFEST, data: manifestData }, { name: EXPORT_SUMS, data: sums }], now);
   return { zip, manifest, manifestSha256 };
 }
 
@@ -211,14 +245,14 @@ function fileName(taxNumber: string, now: Date) {
 
 export const exportModule: AppModule = {
   name: "export",
-  register(app, { db }) {
+  register(app, { db, files }) {
     /** A teljes cégexport letöltése. Az egész cég adatait tartalmazza, ezért csak Adminisztrátor és Vezető könyvelő kérheti. */
     app.get<{ Params: { companyId: string } }>("/api/companies/:companyId/export", async (request, reply) => {
       const { companyId } = request.params;
       const { user } = await requireCompanyPermission(db, request, companyId, "audit:read");
       const now = new Date();
       const result = await db.transaction(async (tx) => {
-        const r = await buildCompanyExport(tx, companyId, user.name, now);
+        const r = await buildCompanyExport(tx, files, companyId, user.name, now);
         await writeAudit(tx, {
           companyId,
           userId: user.id,

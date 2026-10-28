@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { FileStoreConfig } from "./core/filestore";
 
 export type Config = {
   port: number;
@@ -24,10 +25,16 @@ export type Config = {
    * nem érhető el (a felület ezt kiírja).
    */
   eafaGateway: { url: string; secret: string } | null;
+  /** Csatolmányok tárolása (helyi mappa vagy S3-kompatibilis tároló), beállításból. */
+  fileStore: FileStoreConfig;
+  /** Egy csatolmány legnagyobb mérete bájtban. */
+  attachmentMaxBytes: number;
 };
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultWebDist = path.resolve(here, "../../web/dist");
+/** A Könyvelő gyökérmappája: a relatív FAJLTAR_MAPPA ehhez képest értendő (a szerver és a parancsok is ugyanazt látják). */
+const projectRoot = path.resolve(here, "../../..");
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const databaseUrl = env.DATABASE_URL;
@@ -46,6 +53,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: env.TRUST_PROXY === "true",
     logLevel: env.LOG_LEVEL ?? (production ? "info" : "warn"),
     eafaGateway: gatewayConfig(env),
+    fileStore: fileStoreConfig(env),
+    attachmentMaxBytes: Math.round(Number(env.CSATOLMANY_MAX_MB ?? 10) * 1024 * 1024),
     allowedOrigins: (env.ALLOWED_ORIGINS ?? "")
       .split(",")
       .map((s) => s.trim().replace(/\/$/, ""))
@@ -62,4 +71,28 @@ function gatewayConfig(env: NodeJS.ProcessEnv): Config["eafaGateway"] {
     throw new Error("Az EAFA_KONYVELO_ATJARO_TITOK legalább 32 karakter legyen (ugyanaz, mint az eÁFA-ban).");
   }
   return { url, secret };
+}
+
+/**
+ * Fájltárolás: FAJLTAR=local (alapértelmezés, FAJLTAR_MAPPA) vagy FAJLTAR=s3 (pl. Supabase Storage):
+ * FAJLTAR_S3_VEGPONT, FAJLTAR_S3_REGIO, FAJLTAR_S3_VODOR, FAJLTAR_S3_KULCS, FAJLTAR_S3_TITOK.
+ */
+export function fileStoreConfig(env: NodeJS.ProcessEnv): FileStoreConfig {
+  const kind = (env.FAJLTAR ?? "local").trim();
+  if (kind === "local") return { kind: "local", dir: path.resolve(projectRoot, env.FAJLTAR_MAPPA?.trim() || "storage") };
+  if (kind !== "s3") throw new Error(`Ismeretlen fájltároló: FAJLTAR=${kind} (local vagy s3).`);
+  const need = (name: string) => {
+    const v = env[name]?.trim();
+    if (!v) throw new Error(`S3 fájltárolóhoz a ${name} is kell (lásd ELESITES.md).`);
+    return v;
+  };
+  return {
+    kind: "s3",
+    endpoint: env.FAJLTAR_S3_VEGPONT?.trim() || null,
+    region: need("FAJLTAR_S3_REGIO"),
+    bucket: need("FAJLTAR_S3_VODOR"),
+    accessKeyId: need("FAJLTAR_S3_KULCS"),
+    secretAccessKey: need("FAJLTAR_S3_TITOK"),
+    forcePathStyle: env.FAJLTAR_S3_UTVONAL_STILUS !== "false",
+  };
 }

@@ -3,6 +3,8 @@
  * az API-t, amely a lefordított felületet (apps/web/dist) is kiszolgálja.
  * Előtte: npm run build
  */
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -52,6 +54,8 @@ gateway.digests.INBOUND = [
 const port = Number(process.env.E2E_PORT ?? 3100);
 const config = {
   ...loadConfig({ DATABASE_URL: appUrl, LOG_LEVEL: "warn" }),
+  // A csatolmányok egy ideiglenes mappába kerülnek.
+  fileStore: { kind: "local" as const, dir: mkdtempSync(path.join(tmpdir(), "konyvelo-e2e-csatolmany-")) },
   port,
   webDistDir: path.join(here, "../apps/web/dist"),
   eafaGateway: { url: gateway.url, secret: gateway.secret },

@@ -45,6 +45,7 @@ export function buildZip(files: ReadonlyArray<{ name: string; data: Buffer }>, d
     central.push(c, name);
     offset += 30 + name.length + compressed.length;
   }
+  if (offset > 0xffffffff || files.length > 0xffff) throw new Error("A csomag túl nagy a ZIP-formátumhoz (4 GB / 65535 fájl).");
   const centralBuf = Buffer.concat(central);
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
@@ -54,3 +55,4 @@ export function buildZip(files: ReadonlyArray<{ name: string; data: Buffer }>, d
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...locals, centralBuf, end]);
 }
+

@@ -48,6 +48,22 @@ export const GUIDE: GuideTopic[] = [
     ],
   },
   {
+    id: "csatolmany",
+    title: "A számla PDF-jének vagy fényképének csatolása",
+    intro: "A bizonylathoz feltöltheti az eredeti számla beszkennelt PDF-jét vagy fényképét, így később egy kattintással megnézheti.",
+    steps: [
+      "Mentse a bizonylatot piszkozatként (vagy nyisson meg egy már könyvelt bizonylatot).",
+      "A „Csatolmányok” részben kattintson a „Fájl feltöltése” gombra, és válassza ki a fájlt. PDF, JPEG vagy PNG lehet.",
+      "A feltöltött fájl megjelenik a listában. A nevére vagy az „Előnézet” gombra kattintva ugyanezen az oldalon megnyílik; az Esc billentyű bezárja.",
+      "Ha könyvelés előtt rossz fájlt töltött fel, a „Törlés” gombbal eltávolíthatja.",
+    ],
+    tips: [
+      "A program a fájl tartalmát is ellenőrzi: ha egy fájl csak át lett nevezve (pl. egy kép .pdf végződéssel), nem fogadja el.",
+      "Könyvelt bizonylat csatolmánya már nem törölhető (a törvény szerint az eredetinek meg kell maradnia), de újabb csatolmány feltölthető mellé.",
+      "Minden csatolmány ujjlenyomatot (SHA-256) kap. Beállítások → Audit napló → „Sértetlenség ellenőrzése”: kiderül, ha egy fájlt utólag kicseréltek.",
+    ],
+  },
+  {
     id: "vevoszamla",
     title: "Vevőszámla rögzítése (amit a cég kiállított)",
     intro: "Ugyanúgy megy, mint a szállítói számla, csak a típus és a partner más.",

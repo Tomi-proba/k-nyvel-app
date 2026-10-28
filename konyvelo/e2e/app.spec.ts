@@ -671,12 +671,47 @@ test("NAV-import: összekapcsolás kóddal, lekérdezés, javaslat, jóváhagyá
   await expect(page.getByRole("heading", { level: 1, name: /^SZSZ-2026-/ })).toBeVisible();
 });
 
+test("csatolmány: feltöltés, álcázott fájl elutasítása, előnézet az oldalon, sértetlenség", async ({ page }) => {
+  await login(page);
+  await page.goto("/konyveles?status=POSTED");
+  await page.getByRole("link", { name: /^SZSZ-2026-/ }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: /^SZSZ-2026-/ })).toBeVisible();
+  const section = page.getByRole("region", { name: "Csatolmányok" });
+  await expect(section.getByText("Nincs csatolmány.")).toBeVisible();
+
+  // Képnek álcázott szöveg: a tartalma alapján elutasítja.
+  await section.locator('input[type="file"]').setInputFiles({ name: "szamla.png", mimeType: "image/png", buffer: Buffer.from("ez nem kép") });
+  await expect(section.getByRole("alert")).toContainText("Csak PDF, JPEG vagy PNG");
+
+  const pdf = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
+  await section.locator('input[type="file"]').setInputFiles({ name: "bérleti számla.pdf", mimeType: "application/pdf", buffer: pdf });
+  await expect(page.getByText("Feltöltve: bérleti számla.pdf")).toBeVisible();
+  await expect(section.getByText(/könyvelés után feltöltve/)).toBeVisible();
+  await expect(section.getByRole("button", { name: /törlése$/ })).toHaveCount(0);
+  await expectAccessible(page, "Bizonylat csatolmánnyal");
+
+  // Előnézet ugyanazon az oldalon (párbeszédablakban), új ablak nélkül.
+  await section.getByRole("button", { name: "Előnézet" }).click();
+  const dialog = page.getByRole("dialog", { name: "bérleti számla.pdf" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("iframe")).toHaveAttribute("src", /^blob:/);
+  expect(page.context().pages()).toHaveLength(1);
+  await expectAccessible(page, "Csatolmány előnézete");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  await page.goto("/beallitasok/naplo");
+  await page.getByRole("button", { name: "Sértetlenség ellenőrzése" }).click();
+  await expect(page.getByText(/A bizonylatok és a csatolmányok sértetlenek/)).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Csatolmány feltöltése" }).first()).toBeVisible();
+});
+
 test("súgó: tartalomjegyzék, lépésenkénti leírások, akadálymentesen", async ({ page }) => {
   await login(page);
   await page.getByRole("link", { name: "Súgó" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Súgó" })).toBeVisible();
   const toc = page.getByRole("navigation", { name: "Tartalom" });
-  await expect(toc.getByRole("link")).toHaveCount(12);
+  await expect(toc.getByRole("link")).toHaveCount(13);
   await toc.getByRole("link", { name: "Szállítói számla rögzítése (amit a cég kapott)" }).click();
   const topic = page.getByRole("region", { name: "Szállítói számla rögzítése (amit a cég kapott)" });
   await expect(topic.getByRole("listitem")).toHaveCount(7);

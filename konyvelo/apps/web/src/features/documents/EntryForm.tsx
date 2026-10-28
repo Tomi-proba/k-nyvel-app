@@ -33,6 +33,7 @@ import {
   type Header,
   type Row,
 } from "./entry-model";
+import { AttachmentsSection } from "./AttachmentsSection";
 import { PreviewDialog, type PreviewData } from "./PreviewDialog";
 import { deadlineText, useInvalidateDocuments, useTemplates } from "./queries";
 import { SettlementSection } from "./SettlementSection";
@@ -629,6 +630,12 @@ export function EntryForm({ initial, draftId, reference }: { initial: EntryState
           )}
         </div>
       </form>
+
+      {draftId ? (
+        <AttachmentsSection documentId={draftId} posted={false} />
+      ) : (
+        <p className="muted small">Csatolmányt (a számla PDF-jét vagy fényképét) a piszkozat mentése után tölthet fel.</p>
+      )}
 
       <PreviewDialog
         open={previewOpen}

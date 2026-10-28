@@ -123,6 +123,10 @@ export const GLOSSARY = {
     title: "Rögzítési határidő",
     text: "Pénztári tételt a pénzmozgással egyidejűleg, banki tételt a kivonat megérkezésekor (a rendszer legkésőbb a tárgyhót követő hó 15-ét figyeli), egyéb bizonylatot legkésőbb a tárgynegyedévet követő hó végéig kell könyvelni (Szt. 165. § (3)).",
   },
+  csatolmany: {
+    title: "Csatolmány",
+    text: "A bizonylat eredetijének beszkennelt vagy lefényképezett másolata (PDF, JPEG vagy PNG). Minden fájl SHA-256 lenyomatot kap, amely a bizonylat könyvelési lenyomatába is beleszámít, így egy utólagos csere kimutatható. Könyvelt bizonylat csatolmánya nem törölhető (Szt. 169. §), de újabb feltölthető mellé.",
+  },
   kontirozasiSablon: {
     title: "Kontírozási sablon",
     text: "Gyakori könyvelések mintája (pl. szállítói számla: költség tartozik nettó, 466 tartozik áfa, 454 követel bruttó). Rögzítéskor az Alt+L-lel választható; a beírt összegből kitölti a sorokat.",

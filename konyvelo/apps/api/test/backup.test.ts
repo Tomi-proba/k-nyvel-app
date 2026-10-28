@@ -2,7 +2,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BackupError, createBackup, restoreBackup, verifyBackup } from "../src/core/backup";
+import { execFileSync } from "node:child_process";
+import { BackupError, createBackup, encryptBackup, restoreBackup, verifyBackup } from "../src/core/backup";
+import { createFileStore, LocalFileStore } from "../src/core/filestore";
 import { createCompany, createTestApp, login, nextTaxNumber, resetDatabase, setupAdmin, type Client, type TestContext } from "./helpers";
 
 /**
@@ -26,6 +28,9 @@ let acc: Record<string, string>;
 let supplier: string;
 let customer: string;
 let dir: string;
+let attachmentIds: string[] = [];
+const PDF = Buffer.from("%PDF-1.4\nmentes teszt\n%%EOF\n");
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("kep a mentesben")]);
 
 /** Minden kimutatás és lista, amelyet a visszaállítás után össze kell vetni. */
 async function snapshot(client: Client): Promise<Record<string, unknown>> {
@@ -35,6 +40,7 @@ async function snapshot(client: Client): Promise<Record<string, unknown>> {
     fokonyviKivonatJanuar: `${c}/reports/trial-balance?from=2026-01-01&to=2026-01-31`,
     naplofokonyv: `${c}/reports/journal?from=2026-01-01&to=2026-12-31`,
     kartonSzallitok: `${c}/reports/ledger?accountId=${acc["454"]}&from=2026-01-01&to=2026-12-31`,
+    csatolmanyEllenorzes: `${c}/integrity`,
     kartonBank: `${c}/reports/ledger?accountId=${acc["384"]}&from=2026-01-01&to=2026-12-31`,
     kartonPartner: `${c}/reports/ledger?partnerId=${customer}&from=2026-01-01&to=2026-12-31`,
     merleg: `${c}/reports/balance-sheet?asOf=2026-12-31`,
@@ -99,8 +105,15 @@ beforeAll(async () => {
     docType: "HELY", partnerId: customer, correctsDocumentId: sale.id, externalNumber: "2026/0001-H", description: "Árengedmény", issueDate: "2026-10-25",
     fulfillmentDate: "2026-10-25", accountingDate: "2026-10-25", lines: [L("912", "D", 20000), L("467", "D", 5400), L("311", "C", 25400)],
   });
-  // Egy piszkozat is (a visszaállítás után is piszkozat marad).
-  expect((await admin.post(`/api/companies/${companyId}/documents`, { docType: "VEGY", description: "Félkész", accountingDate: "2026-11-02" })).statusCode).toBe(201);
+  // Egy piszkozat is (a visszaállítás után is piszkozat marad), csatolmánnyal; és egy könyvelt bizonylat csatolmánya.
+  const draftDoc = await admin.post(`/api/companies/${companyId}/documents`, { docType: "VEGY", description: "Félkész", accountingDate: "2026-11-02" });
+  expect(draftDoc.statusCode).toBe(201);
+  const up = async (docId: string, name: string, data: Buffer) => {
+    const r = await admin.post(`/api/companies/${companyId}/documents/${docId}/attachments`, data, { "content-type": "application/octet-stream", "x-file-name": encodeURIComponent(name) });
+    expect(r.statusCode, r.body).toBe(201);
+    return r.json().id as string;
+  };
+  attachmentIds = [await up(rent.id, "bérleti számla.pdf", PDF), await up(draftDoc.json().id, "fotó.png", PNG)];
   const periods = (await admin.get(`/api/companies/${companyId}/fiscal-years`)).json()[0].periods as Array<{ id: string; startDate: string }>;
   const jan = periods.find((p) => p.startDate === "2026-01-01")!;
   expect((await admin.post(`/api/companies/${companyId}/periods/${jan.id}/close`)).statusCode).toBe(200);
@@ -117,19 +130,28 @@ describe("mentés és visszaállítás", () => {
     const before = await snapshot(admin);
     expect((before.auditEllenorzes as { ok: boolean }).ok).toBe(true);
     expect((before.bizonylatok as { total: number }).total).toBe(9);
+    expect(before.csatolmanyEllenorzes).toMatchObject({ ok: true, attachments: { checked: 2 } });
 
-    const backup = await createBackup({ databaseUrl: sourceOwner, dir, passphrase: PASSPHRASE });
-    expect(backup.encrypted).toBe(true);
+    const backup = await createBackup({ databaseUrl: sourceOwner, dir, passphrase: PASSPHRASE, files: createFileStore(ctx.config.fileStore) });
+    expect(backup).toMatchObject({ encrypted: true, attachments: 2, attachmentProblems: [] });
+    expect(readFileSync(backup.file).includes(PDF)).toBe(false);
     // A titkosított mentésben a cégnév és a partnerek nevei sem olvashatók.
     expect(readFileSync(backup.file).includes(Buffer.from("Irodaház"))).toBe(false);
     expect(readFileSync(`${backup.file}.sha256`, "utf8")).toBe(`${backup.sha256}  ${path.basename(backup.file)}\n`);
 
-    await restoreBackup({ file: backup.file, targetUrl: targetOwner!, passphrase: PASSPHRASE });
-    const restored = await createTestApp({}, targetApp);
+    // Egy másik (üres) fájltárolóba: a csatolmányok is a mentésből kerülnek vissza.
+    const storeDir = mkdtempSync(path.join(dir, "tarolo-"));
+    expect(await restoreBackup({ file: backup.file, targetUrl: targetOwner!, passphrase: PASSPHRASE, files: new LocalFileStore(storeDir) })).toMatchObject({ attachments: 2 });
+    const restored = await createTestApp({ fileStore: { kind: "local", dir: storeDir } }, targetApp);
     try {
       const client = await login(restored.app, "admin@example.hu");
       const after = await snapshot(client);
       for (const key of Object.keys(before)) expect(after[key], key).toEqual(before[key]);
+      const docs = (after.bizonylatok as { items: Array<{ id: string; externalNumber: string | null; description: string | null }> }).items;
+      const rentId = docs.find((d) => d.externalNumber === "IH-101")!.id;
+      const content = await client.get(`/api/companies/${companyId}/documents/${rentId}/attachments/${attachmentIds[0]}/content`);
+      expect(content.statusCode).toBe(200);
+      expect(content.rawPayload.equals(PDF)).toBe(true);
       // A védelmek is visszakerültek: a könyvelt bizonylat nem módosítható, a lezárt időszakba nem lehet könyvelni.
       const closed = await client.post(`/api/companies/${companyId}/documents`, {
         docType: "VEGY", description: "Januári utólagos", issueDate: "2026-01-20", accountingDate: "2026-01-20", post: true,
@@ -150,7 +172,7 @@ describe("mentés és visszaállítás", () => {
   });
 
   it("hibás jelszóval vagy sérült fájllal nem állít vissza, és a cél adatbázishoz nem nyúl", async () => {
-    const backup = await createBackup({ databaseUrl: sourceOwner, dir, passphrase: PASSPHRASE });
+    const backup = await createBackup({ databaseUrl: sourceOwner, dir, passphrase: PASSPHRASE, files: createFileStore(ctx.config.fileStore) });
     expect(() => verifyBackup(backup.file, "rossz-jelszo-12345")).toThrow(/hibás a jelszó/);
     expect(() => verifyBackup(backup.file, null)).toThrow(/titkosított/);
 
@@ -175,9 +197,55 @@ describe("mentés és visszaállítás", () => {
     const sub = mkdtempSync(path.join(dir, "rotacio-"));
     const times = ["2026-10-01T02:00:00", "2026-10-02T02:00:00", "2026-10-03T02:00:00"];
     let last;
-    for (const t of times) last = await createBackup({ databaseUrl: sourceOwner, dir: sub, keep: 2, now: new Date(t) });
+    for (const t of times) last = await createBackup({ databaseUrl: sourceOwner, dir: sub, keep: 2, now: new Date(t), files: createFileStore(ctx.config.fileStore) });
     expect(last!.encrypted).toBe(false);
-    expect(last!.removed).toEqual(["konyvelo-20261001-020000.dump"]);
-    expect(verifyBackup(last!.file).checksumFile).toBe(true);
+    expect(last!.removed).toEqual(["konyvelo-20261001-020000.tar"]);
+    expect(verifyBackup(last!.file)).toMatchObject({ checksumFile: true, format: "tar", attachments: 2, attachmentProblems: 0 });
+  });
+
+  it("egy csatolmány sérülése a mentésben kiderül, és nem állít vissza semmit", async () => {
+    const sub = mkdtempSync(path.join(dir, "serult-"));
+    const backup = await createBackup({ databaseUrl: sourceOwner, dir: sub, files: createFileStore(ctx.config.fileStore) });
+    const data = Buffer.from(readFileSync(backup.file));
+    const at = data.indexOf(PDF);
+    expect(at).toBeGreaterThan(0);
+    data[at + 10] = data[at + 10]! ^ 0x01;
+    writeFileSync(backup.file, data);
+    // Az ellenőrzőösszeg-fájlt is „javítva”: a csatolmány saját lenyomata így is leleplezi.
+    rmSync(`${backup.file}.sha256`);
+    expect(() => verifyBackup(backup.file)).toThrow(/csatolmány lenyomata nem egyezik/);
+    await expect(restoreBackup({ file: backup.file, targetUrl: targetOwner!, files: new LocalFileStore(mkdtempSync(path.join(sub, "t-"))) })).rejects.toThrow(/csatolmány lenyomata/);
+  });
+
+  it("a hiányzó csatolmányt a mentés jelzi (nem hallgatja el)", async () => {
+    const sub = mkdtempSync(path.join(dir, "hianyzo-"));
+    const store = createFileStore(ctx.config.fileStore);
+    const key = `${companyId}/${attachmentIds[1]}`;
+    const saved = (await store.get(key))!;
+    await store.delete(key);
+    try {
+      const backup = await createBackup({ databaseUrl: sourceOwner, dir: sub, files: store });
+      expect(backup.attachmentProblems).toEqual([{ key, status: "MISSING" }]);
+      expect(verifyBackup(backup.file).attachmentProblems).toBe(1);
+    } finally {
+      await store.put(key, saved, "image/png");
+    }
+  });
+
+  it("a korábbi (K8-as, csak adatbázist tartalmazó) mentés is visszaállítható", async () => {
+    const sub = mkdtempSync(path.join(dir, "regi-"));
+    const raw = path.join(sub, "regi.dump");
+    execFileSync("pg_dump", ["--format=custom", "--no-owner", `--file=${raw}`, `--dbname=${sourceOwner}`]);
+    const file = path.join(sub, "konyvelo-20261001-020000.dump.enc");
+    writeFileSync(file, encryptBackup(readFileSync(raw), PASSPHRASE));
+    expect(verifyBackup(file, PASSPHRASE).format).toBe("dump");
+    await restoreBackup({ file, targetUrl: targetOwner!, passphrase: PASSPHRASE });
+    const restored = await createTestApp({}, targetApp);
+    try {
+      const client = await login(restored.app, "admin@example.hu");
+      expect((await client.get(`/api/companies/${companyId}/audit-log/verify`)).json().ok).toBe(true);
+    } finally {
+      await restored.close();
+    }
   });
 });

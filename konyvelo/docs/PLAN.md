@@ -317,8 +317,23 @@ kötelező.
   és a hibás jelszavú mentést elutasítja.
 - Cégexport: `GET /api/companies/:id/export` (Adminisztrátor, Vezető könyvelő), `manifest.json` + `sha256sums.txt`;
   ellenőrző a böngészőben és parancssorban (`packages/shared/src/export-archive.ts`), a manifest lenyomata az
-  audit naplóban. Csatolmányt a program még nem tárol; a README ezt jelzi.
+  audit naplóban.
 - Súgó: `/sugo` (12 téma lépésről lépésre); végső böngészős tesztek akadálymentességi ellenőrzéssel (20 teszt).
+
+**Állapot (2026-10-28): K9 (csatolmányok) kész.**
+
+- `attachments` tábla (0010) triggerrel: könyvelt bizonylat csatolmánya nem törölhető, a láncba vett
+  csatolmány nem módosítható. A 4.1-ben tervezett archiválási mezők (`is_authentic_copy` stb.) a későbbi
+  archiválási modullal jönnek.
+- Típus a tartalom alapján (`packages/domain/src/attachments.ts`), méretkorlát (`CSATOLMANY_MAX_MB`).
+- SHA-256: a könyvelés előtti csatolmányok a bizonylat tartalmi hash-ébe számítanak (csak ha van
+  csatolmány, így a korábbi bizonylatok hash-e változatlan); minden könyvelt bizonylat csatolmánya a
+  cégenkénti csatolmány-láncba kerül. Ellenőrzés: `GET /api/companies/:id/integrity`.
+- Fájltároló beállításból (`apps/api/src/core/filestore.ts`): helyi mappa vagy S3.
+- Cégexport: `csatolmanyok/` + `csatolmanyok.json` / `.csv`; mentés: tar (adatbázis + csatolmányok +
+  tartalomjegyzék), közös pillanatképből; a régi `.dump` mentések is visszaállíthatók.
+- Felület: csatolmányok a bizonylat oldalán, előnézet párbeszédablakban; Audit napló → Sértetlenség
+  ellenőrzése a bizonylatokat és a csatolmányokat is ellenőrzi; súgótéma.
 
 ### 10.3 Döntési pontok (eldöntve)
 

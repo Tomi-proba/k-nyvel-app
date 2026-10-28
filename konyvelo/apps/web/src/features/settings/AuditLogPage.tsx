@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
-import { auditActionLabel, type AuditEntryDto, type AuditVerifyResponse } from "@konyvelo/shared";
+import { auditActionLabel, type AuditEntryDto, type AuditVerifyResponse, type IntegrityProblemReason, type IntegrityReport } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";
 import { get } from "../../lib/api";
 import { formatDateTimeHu } from "../../lib/format";
@@ -30,6 +30,41 @@ function Changes({ before, after }: { before: unknown; after: unknown }) {
   );
 }
 
+const REASON: Record<IntegrityProblemReason, string> = {
+  CONTENT_CHANGED: "a könyvelt tartalom vagy a csatolmányai utólag megváltoztak",
+  CHAIN_BROKEN: "a csatolmányok lánca megszakadt (csatolmány tűnt el vagy változott)",
+  FILE_MISSING: "a csatolmány fájlja hiányzik a tárolóból",
+  FILE_CHANGED: "a csatolmány fájlját kicserélték (a lenyomata nem egyezik)",
+};
+
+/** A bizonylatok és csatolmányok ellenőrzésének eredménye. */
+function IntegrityResult({ r }: { r: IntegrityReport }) {
+  if (r.ok) {
+    return (
+      <div className="alert alert-success">
+        A bizonylatok és a csatolmányok sértetlenek: {r.documents.checked} könyvelt bizonylat lenyomata és {r.attachments.checked} csatolmány fájlja egyezik.
+      </div>
+    );
+  }
+  return (
+    <div className="alert alert-error" role="alert">
+      <p style={{ marginTop: 0 }}>Figyelem: eltérést találtunk. Állítsa vissza az érintett fájlokat egy korábbi mentésből, és értesítse a rendszergazdát.</p>
+      <ul>
+        {r.documents.problems.map((p) => (
+          <li key={`d-${p.documentId}`}>
+            <span className="mono">{p.serialNumber}</span>: {REASON[p.reason]}
+          </li>
+        ))}
+        {r.attachments.problems.map((p, i) => (
+          <li key={`a-${p.attachmentId}-${i}`}>
+            {p.serialNumber ? <span className="mono">{p.serialNumber}</span> : "Piszkozat"}, „{p.fileName}”: {REASON[p.reason]}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function AuditLogPage() {
   const ws = useWorkspace();
   const companyId = ws.company?.id ?? "";
@@ -43,7 +78,16 @@ export function AuditLogPage() {
     getNextPageParam: (last) => last.nextBefore,
     enabled: Boolean(companyId) && ws.can("audit:read"),
   });
-  const verify = useMutation({ mutationFn: () => get<AuditVerifyResponse>(`/api/companies/${companyId}/audit-log/verify`) });
+  // Egy gombbal: az audit napló lánca, a bizonylatok lenyomata és a csatolmányok fájljai.
+  const verify = useMutation({
+    mutationFn: async () => {
+      const [audit, integrity] = await Promise.all([
+        get<AuditVerifyResponse>(`/api/companies/${companyId}/audit-log/verify`),
+        get<IntegrityReport>(`/api/companies/${companyId}/integrity`),
+      ]);
+      return { ...audit, integrity };
+    },
+  });
 
   if (!ws.can("audit:read")) {
     return <div className="alert alert-info">Az audit naplót Adminisztrátor és Vezető könyvelő láthatja.</div>;
@@ -77,6 +121,7 @@ export function AuditLogPage() {
             értesítse a rendszergazdát.
           </div>
         )}
+        {verify.data && <IntegrityResult r={verify.data.integrity} />}
         {verify.error && <ErrorBox error={verify.error} />}
       </div>
 

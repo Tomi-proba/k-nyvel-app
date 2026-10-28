@@ -178,6 +178,8 @@ export type DocumentDto = {
   postedAt: string | null;
   postedByName: string | null;
   contentHash: string | null;
+  /** Csatolmányok (K9): a beszkennelt számla PDF-je vagy képe. */
+  attachments: AttachmentDto[];
   deadline: DeadlineDto;
   lines: DocumentLineDto[];
   /** Piszkozatban: a kiválasztott, kiegyenlítendő tételek. */
@@ -358,4 +360,29 @@ export type TemplateDto = {
   partnerId: string | null;
   lines: Array<{ accountId: string; side: LineSide; base: AmountBase }>;
   isActive: boolean;
+};
+
+/** A bizonylat csatolmánya (K9). */
+export type AttachmentDto = {
+  id: string;
+  fileName: string;
+  mimeType: "application/pdf" | "image/jpeg" | "image/png";
+  sizeBytes: number;
+  /** A fájl SHA-256 lenyomata. */
+  sha256: string;
+  uploadedAt: string;
+  uploadedByName: string | null;
+  /** Könyvelt bizonylat csatolmánya: a láncba került, nem törölhető. */
+  locked: boolean;
+  /** A könyvelés előtt töltötték fel, ezért a bizonylat lenyomatába is beleszámít. */
+  inDocumentHash: boolean;
+};
+
+export type IntegrityProblemReason = "CONTENT_CHANGED" | "CHAIN_BROKEN" | "FILE_MISSING" | "FILE_CHANGED";
+
+/** A bizonylatok és csatolmányaik sértetlenségének ellenőrzése. */
+export type IntegrityReport = {
+  ok: boolean;
+  documents: { checked: number; problems: Array<{ documentId: string; serialNumber: string | null; reason: IntegrityProblemReason }> };
+  attachments: { checked: number; problems: Array<{ attachmentId: string; fileName: string; serialNumber: string | null; reason: IntegrityProblemReason }> };
 };

@@ -331,3 +331,22 @@ export const navInvoices = pgTable("nav_invoices", {
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+// ---------- Csatolmányok (K9) ----------
+
+export const attachments = pgTable("attachments", {
+  id: uuid("id").primaryKey(),
+  companyId: uuid("company_id").notNull(),
+  documentId: uuid("document_id").notNull(),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull().$type<"application/pdf" | "image/jpeg" | "image/png">(),
+  sizeBytes: integer("size_bytes").notNull(),
+  sha256: char("sha256", { length: 64 }).notNull(),
+  storageKey: text("storage_key").notNull(),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true, mode: "date", precision: 3 }).notNull(),
+  uploadedBy: uuid("uploaded_by").notNull(),
+  inDocumentHash: boolean("in_document_hash").notNull().default(false),
+  chainSeq: bigint("chain_seq", { mode: "number" }),
+  prevHash: text("prev_hash"),
+  chainHash: text("chain_hash"),
+});

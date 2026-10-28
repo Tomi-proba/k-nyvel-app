@@ -14,6 +14,7 @@ import { Field } from "../../ui/Field";
 import { PageHeader } from "../../ui/Page";
 import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
+import { AttachmentsSection } from "./AttachmentsSection";
 import { StatusBadge } from "./StatusBadge";
 import { deadlineText, useInvalidateDocuments } from "./queries";
 
@@ -198,6 +199,8 @@ export function DocumentView({ doc }: { doc: DocumentDto }) {
           </dl>
         </section>
       </div>
+
+      <AttachmentsSection documentId={doc.id} posted={posted} />
 
       {doc.settlements.length > 0 && (
         <section className="card" aria-labelledby="kiegyenlitesek">
