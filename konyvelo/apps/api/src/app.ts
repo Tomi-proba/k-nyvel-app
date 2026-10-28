@@ -21,6 +21,7 @@ import { reportsModule } from "./modules/reports";
 import { subledgerModule } from "./modules/subledger";
 import { templatesModule } from "./modules/templates";
 import { navModule } from "./modules/nav";
+import { exportModule } from "./modules/export";
 
 /** A bekapcsolt modulok. Új modul felvétele: ide kell beírni. */
 export const MODULES: AppModule[] = [
@@ -35,6 +36,7 @@ export const MODULES: AppModule[] = [
   reportsModule,
   closingModule,
   navModule,
+  exportModule,
   auditModule,
 ];
 

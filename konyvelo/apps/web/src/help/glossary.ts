@@ -139,6 +139,10 @@ export const GLOSSARY = {
     title: "NAV-adatszolgáltatás",
     text: "A számlázóprogram által a NAV-nak küldött adat. Általában nem azonos magával a számlával, ezért a könyvelés bizonylata az eredeti számla; a NAV-adat csak javaslat, vesse össze a számlával.",
   },
+  cegexport: {
+    title: "Cégexport",
+    text: "Egy cég összes adata egy letölthető ZIP-fájlban, táblázatokkal és tartalomjegyzékkel. A tartalomjegyzék minden fájl SHA-256 lenyomatát (egyfajta ujjlenyomatát) tartalmazza: ha egyetlen betű is megváltozik, az ellenőrzés kimutatja.",
+  },
 } as const;
 
 export type GlossaryKey = keyof typeof GLOSSARY;

@@ -1020,3 +1020,27 @@ tr.clickable:hover td {
 .text-error {
   color: var(--danger);
 }
+
+/* Súgó: tartalomjegyzék és lépések. */
+.help-toc {
+  columns: 2 16rem;
+  margin: 0;
+  padding-left: 1.2em;
+}
+.help-toc li {
+  break-inside: avoid;
+  padding-block: 0.15rem;
+}
+.help-steps {
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1.4em;
+  max-width: 70ch;
+}
+.help-tip {
+  max-width: 70ch;
+  color: var(--muted);
+}
+.help-topic {
+  scroll-margin-top: 5rem;
+}

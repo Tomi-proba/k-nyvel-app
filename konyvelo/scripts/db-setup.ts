@@ -8,7 +8,7 @@
  * 3. Létrehozza a két adatbázis-felhasználót a .env-ben megadott jelszóval:
  *      konyvelo_owner – a séma tulajdonosa, csak a migrációkat futtatja
  *      konyvelo_app   – az alkalmazás ezzel fut; az audit naplót csak bővíteni tudja
- * 4. Létrehozza a három adatbázist (fejlesztés, automata tesztek, böngészős
+ * 4. Létrehozza az adatbázisokat (fejlesztés, automata tesztek, a mentés visszaállításának tesztje, böngészős
  *    tesztek), UTF-8 kódolással és magyar ábécérenddel, ha a PostgreSQL ezt
  *    támogatja.
  *
@@ -67,7 +67,7 @@ async function main() {
 
   const app = parseUrl("DATABASE_URL");
   const owner = parseUrl("DATABASE_MIGRATION_URL");
-  const databases = [...new Set(["DATABASE_URL", "TEST_DATABASE_URL", "E2E_DATABASE_URL"].filter((k) => process.env[k]).map((k) => parseUrl(k).database))];
+  const databases = [...new Set(["DATABASE_URL", "TEST_DATABASE_URL", "RESTORE_TEST_DATABASE_URL", "E2E_DATABASE_URL"].filter((k) => process.env[k]).map((k) => parseUrl(k).database))];
 
   const superuser = {
     host: process.env.PGHOST ?? "localhost",

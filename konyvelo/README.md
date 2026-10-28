@@ -17,7 +17,7 @@ Magyar nyelvű, kettős könyvvitelt vezető webalkalmazás. A követelmények a
 | 5. Kimutatások | főkönyvi kivonat, naplófőkönyv, karton, mérleg („A”), eredménykimutatás (összköltség), előző év, Ft / ezer Ft, CSV, nyomtatás/PDF | ✅ kész |
 | 6. Zárás | havi időszakzárás és feloldás, zárlati állapot, évzárás előnézettel, nyitás, év újranyitása, nyitó egyenlegek átvétele; Excel (.xlsx) export | ✅ kész |
 | 7. NAV Online Számla import | összekapcsolás az eÁFA NAV-kapcsolatával kapcsolódási kóddal, lekérdezés 35 napos részletekben, könyvelési javaslat (partner alapértelmezése vagy sablon), jóváhagyás piszkozatként vagy könyvelve, módosító és sztornó számla, partner felvétele a NAV-adatokból, Teendők | ✅ kész (az eÁFA NAV-átjáróján; a Könyvelőben nincs NAV-titok) |
-| 8. Mentés, export, Docker | | ⏳ |
+| 8. Mentés, export, súgó | titkosítható teljes mentés és visszaállítás (teszt: a visszaállított adatbázison minden kimutatás ugyanaz), cégexport ZIP-ben SHA-256-os tartalomjegyzékkel és ellenőrzővel, súgó kezdőknek, végső böngészős és akadálymentességi tesztek | ✅ kész |
 
 ## Felépítés
 
@@ -214,6 +214,49 @@ Példa: a cég eddig másik programban könyvelt, 2026. október 1-jétől ebben
 9. **Hónap végén**: *Bank és pénztár* → bankkivonat záró egyenlegének egyeztetése; *Főkönyvi kivonat* októberre; *Egyeztetés*; végül az október lezárása.
 
 Ha egy nyitó tétel hibás, a nyitó bizonylat (NYIT-…) sztornózható, és a helyes adat újra rögzíthető.
+
+## Mentés és visszaállítás
+
+**Teljes mentés** (minden cég, felhasználó, audit napló):
+
+```bash
+npm run backup
+```
+
+A mentés a `mentesek/` mappába kerül (`BACKUP_DIR`), mellé egy `.sha256` ellenőrzőfájl. Ha a `.env`-ben meg
+van adva a `BACKUP_PASSPHRASE` (legalább 12 karakter), a mentés **titkosítva** készül (AES-256-GCM):
+jelszó nélkül nem olvasható, és ha megsérül, a visszaállítás megtagadja. A jelszót tartsa a mentéstől
+külön helyen; nélküle a mentés nem állítható vissza. A legutóbbi `BACKUP_KEEP` darab (alapból 30) marad
+meg. A mentéshez a PostgreSQL ügyféleszközei kellenek (`pg_dump`, `pg_restore`; ugyanolyan vagy újabb
+főverzió, mint a szerveré).
+
+**Ütemezés (naponta egyszer):**
+
+- Linux / macOS (`crontab -e`): `15 2 * * * cd /ut/a/konyvelo && npm run backup >> mentesek/naplo.txt 2>&1`
+- Windows: Feladatütemező → Alapszintű feladat → Naponta → Program: `cmd.exe`, argumentum:
+  `/c cd /d C:\ut\a\konyvelo && npm run backup >> mentesek\naplo.txt 2>&1`
+
+Másolja a mentéseket rendszeresen egy másik gépre vagy külső tárhelyre is: ha a gép elvész, a rajta
+lévő mentés is.
+
+**Visszaállítás:**
+
+1. Ellenőrizze a mentést: `npm run restore -- mentesek/konyvelo-20261028-021500.dump.enc --ellenorzes`
+2. Állítsa le a programot.
+3. Állítsa vissza: `npm run restore -- mentesek/konyvelo-20261028-021500.dump.enc --igen`
+   (alapból a `DATABASE_MIGRATION_URL` adatbázisába; másikba: `--cel <kapcsolat>`). A cél adatbázis minden
+   adata törlődik, és a mentés tartalma kerül a helyére, egyetlen tranzakcióban.
+4. Indítsa el a programot, és nézze meg: *Beállítások → Audit napló → Sértetlenség ellenőrzése*.
+
+Érdemes negyedévente egy próba-visszaállítást végezni egy külön adatbázisba (`--cel`).
+
+**Cégexport:** *Beállítások → Mentés és export → Cégexport letöltése*. Egy cég összes adata ZIP-ben
+(JSON és Excelben megnyitható CSV), `manifest.json` tartalomjegyzékkel, amely minden fájl SHA-256
+lenyomatát tartalmazza. Ellenőrzés: ugyanott az *Export ellenőrzése* résznél, vagy parancssorból
+`npm run export:check -- <fájl.zip>`. A tartalomjegyzék lenyomata az audit naplóba is bekerül, így az
+is kiderül, ha valaki a tartalomjegyzéket is átírta.
+
+**Súgó:** a fejléc *Súgó* gombja: a fő műveletek lépésről lépésre, kezdőknek.
 
 ## Éles futtatás (egyszerű)
 

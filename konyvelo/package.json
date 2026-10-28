@@ -14,7 +14,10 @@
     "db:migrate": "npm run migrate -w @konyvelo/api",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test -w @konyvelo/domain && npm run test -w @konyvelo/shared && npm run test -w @konyvelo/api",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && playwright test",
+    "backup": "tsx scripts/backup.ts",
+    "restore": "tsx scripts/restore.ts",
+    "export:check": "tsx scripts/export-check.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",

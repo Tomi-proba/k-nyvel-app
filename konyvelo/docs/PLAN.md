@@ -308,6 +308,18 @@ kötelező.
   - a partner a teljes számlaadatból (teljes adószám) vehető fel;
   - egy import legfeljebb 366 napot kérdez le.
 
+**Állapot (2026-10-28): K8.1–K8.3 kész.**
+
+- Mentés: `npm run backup` / `npm run restore` (`apps/api/src/core/backup.ts`), titkosítás AES-256-GCM
+  (scrypt), `.sha256` ellenőrzőfájl, megőrzési szám. Teszt (`backup.test.ts`): a mentést egy másik adatbázisba
+  állítja vissza, és 16 kimutatás, illetve lista (főkönyvi kivonat, napló, kartonok, mérleg, eredménykimutatás,
+  nyitott tételek, egyeztetés, bizonylatok, audit napló és annak ellenőrzése) azonos az eredetivel; a sérült
+  és a hibás jelszavú mentést elutasítja.
+- Cégexport: `GET /api/companies/:id/export` (Adminisztrátor, Vezető könyvelő), `manifest.json` + `sha256sums.txt`;
+  ellenőrző a böngészőben és parancssorban (`packages/shared/src/export-archive.ts`), a manifest lenyomata az
+  audit naplóban. Csatolmányt a program még nem tárol; a README ezt jelzi.
+- Súgó: `/sugo` (12 téma lépésről lépésre); végső böngészős tesztek akadálymentességi ellenőrzéssel (20 teszt).
+
 ### 10.3 Döntési pontok (eldöntve)
 
 1. **Hogyan engedélyezi a cég, hogy a Könyvelő az ő NAV-kapcsolatán át kérdezzen?**

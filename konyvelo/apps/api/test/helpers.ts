@@ -58,8 +58,8 @@ export async function appQuery(sql: string, params: unknown[] = []): Promise<pg.
 
 export type TestContext = { app: FastifyInstance; db: Db; close: () => Promise<void> };
 
-export async function createTestApp(overrides: Partial<Config> = {}): Promise<TestContext> {
-  const { appUrl } = testUrls();
+export async function createTestApp(overrides: Partial<Config> = {}, databaseUrl?: string): Promise<TestContext> {
+  const appUrl = databaseUrl ?? testUrls().appUrl;
   const config = { ...loadConfig({ DATABASE_URL: appUrl, NODE_ENV: "test", LOG_LEVEL: "silent" }), webDistDir: null, ...overrides };
   const { db, pool } = createDb(appUrl);
   const app = await buildApp(config, db);

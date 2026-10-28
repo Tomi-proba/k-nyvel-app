@@ -14,6 +14,8 @@ import { ClosingPage, OpeningPage } from "./features/closing/ClosingPages";
 import { BalanceSheetPage, IncomeStatementPage, JournalPage, LedgerPage, TrialBalancePage } from "./features/reports/ReportsPages";
 import { OpenItemsPage, ReconciliationPage } from "./features/subledger/SubledgerPages";
 import { HomePage } from "./features/home/HomePage";
+import { HelpPage } from "./features/help/HelpPage";
+import { BackupExportPage } from "./features/settings/BackupExportPage";
 import { NavConnectionPage, NavImportPage, NavInvoicePage } from "./features/nav/NavPages";
 import { NewPartnerPage, PartnerDetailPage, PartnersPage } from "./features/partners/PartnersPages";
 import { AuditLogPage } from "./features/settings/AuditLogPage";
@@ -104,6 +106,7 @@ function Root() {
           <Route path="kimutatasok/eredmeny" element={<IncomeStatementPage />} />
           <Route path="zaras" element={<ClosingPage />} />
           <Route path="zaras/nyitas" element={<OpeningPage />} />
+          <Route path="sugo" element={<HelpPage />} />
           <Route path="beallitasok" element={<SettingsLayout />}>
             <Route index element={<Navigate to={me.data.companies.length ? "ceg" : "jelszo"} replace />} />
             <Route path="ceg" element={<CompanySettingsPage />} />
@@ -111,6 +114,7 @@ function Root() {
             <Route path="szamlatukor" element={<ChartOfAccountsPage />} />
             <Route path="sablonok" element={<TemplatesPage />} />
             <Route path="nav-kapcsolat" element={<NavConnectionPage />} />
+            <Route path="mentes" element={<BackupExportPage />} />
             <Route path="felhasznalok" element={<MembersPage />} />
             <Route path="naplo" element={<AuditLogPage />} />
             <Route path="jelszo" element={<PasswordPage />} />

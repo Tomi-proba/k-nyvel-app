@@ -100,6 +100,9 @@ export function AppLayout() {
               </span>
             </button>
           </Tooltip>
+          <NavLink to="/sugo" className="btn btn-small">
+            Súgó
+          </NavLink>
           <Tooltip content="Gyorsbillentyűk listája (?)">
             <button type="button" className="btn btn-icon" aria-label="Gyorsbillentyűk listája" aria-keyshortcuts="?" onClick={() => setHelpOpen(true)}>
               <span aria-hidden="true">⌨</span>

@@ -670,3 +670,41 @@ test("NAV-import: összekapcsolás kóddal, lekérdezés, javaslat, jóváhagyá
   await page.getByRole("link", { name: "Megnyitás" }).click();
   await expect(page.getByRole("heading", { level: 1, name: /^SZSZ-2026-/ })).toBeVisible();
 });
+
+test("súgó: tartalomjegyzék, lépésenkénti leírások, akadálymentesen", async ({ page }) => {
+  await login(page);
+  await page.getByRole("link", { name: "Súgó" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Súgó" })).toBeVisible();
+  const toc = page.getByRole("navigation", { name: "Tartalom" });
+  await expect(toc.getByRole("link")).toHaveCount(12);
+  await toc.getByRole("link", { name: "Szállítói számla rögzítése (amit a cég kapott)" }).click();
+  const topic = page.getByRole("region", { name: "Szállítói számla rögzítése (amit a cég kapott)" });
+  await expect(topic.getByRole("listitem")).toHaveCount(7);
+  await expect(topic).toContainText("Ctrl+Enter");
+  await expectAccessible(page, "Súgó");
+});
+
+test("mentés és export: cégexport letöltése, ellenőrzése, és a sérült fájl kimutatása", async ({ page }) => {
+  await login(page);
+  await page.goto("/beallitasok/mentes");
+  await expect(page.getByRole("heading", { level: 1, name: "Mentés és export" })).toBeVisible();
+  await expectAccessible(page, "Mentés és export");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Cégexport letöltése" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^konyvelo-cegexport-10773381244-\d{4}-\d{2}-\d{2}\.zip$/);
+  const file = await download.path();
+  await expect(page.getByRole("cell", { name: "Admin Anna" }).first()).toBeVisible();
+
+  await page.getByLabel("Cégexport fájl (.zip)").setInputFiles(file);
+  await expect(page.getByText("A csomag sértetlen.")).toBeVisible();
+  await expect(page.getByText(/Ezt a csomagot ez a program készítette/)).toBeVisible();
+  await expectAccessible(page, "Export ellenőrzése");
+
+  // Egy bájt megváltoztatása a csomagban: az ellenőrzés kimutatja.
+  const fs = await import("node:fs");
+  const bytes = fs.readFileSync(file);
+  bytes[300] = bytes[300]! ^ 0xff;
+  await page.getByLabel("Cégexport fájl (.zip)").setInputFiles({ name: "serult.zip", mimeType: "application/zip", buffer: bytes });
+  await expect(page.getByText("A csomag sérült vagy módosult.")).toBeVisible();
+});

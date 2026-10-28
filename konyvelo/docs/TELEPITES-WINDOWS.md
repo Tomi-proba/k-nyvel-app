@@ -69,6 +69,19 @@ npm run db:migrate
 npm run dev
 ```
 
+## Mentés (naponta)
+
+1. A `.env` fájlba írjon egy legalább 12 karakteres jelszót: `BACKUP_PASSPHRASE=...`. Ezt írja fel egy biztos
+   helyre is: nélküle a mentés nem állítható vissza.
+2. Próbaként a Parancssorban, a `konyvelo` mappában: `npm run backup`. A mentés a `mentesek` mappába kerül.
+   Ha azt írja, hogy a `pg_dump` nem található, adja hozzá a PostgreSQL `bin` mappáját (pl.
+   `C:\Program Files\PostgreSQL\16\bin`) a PATH-hoz, majd nyisson új Parancssort.
+3. Ütemezés: Start menü → *Feladatütemező* → *Alapszintű feladat létrehozása* → Naponta, hajnali 2:15 →
+   *Program indítása*: `cmd.exe`, argumentumok: `/c cd /d C:\Users\<Ön>\konyvelo && npm run backup >> mentesek\naplo.txt 2>&1`.
+4. Hetente másolja a `mentesek` mappát egy külső lemezre vagy felhőtárhelyre.
+
+Visszaállítás: a README „Mentés és visszaállítás” pontja szerint.
+
 ## Ha valami nem működik
 
 | Üzenet | Teendő |
