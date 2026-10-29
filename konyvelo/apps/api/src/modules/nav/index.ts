@@ -28,6 +28,7 @@ import type { Db, Executor } from "../../core/db";
 import { AppError, assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
 import type { AppModule } from "../../core/modules";
 import { accounts, companies, documents, navConnections, navImportRuns, navInvoices, partners, postingTemplates, users } from "../../core/schema";
+import { emitPartnerChanged } from "../integration/outbox";
 import { createDocument, mapDocumentDbError, reverseDocument } from "../documents";
 import { createGatewayClient, GatewayError, type GatewayClient, type GatewayDigest, type GatewayLink } from "./gateway";
 
@@ -765,6 +766,7 @@ async function createPartnerFromInvoice(db: Db, companyId: string, user: AuthUse
       after: { name, taxNumber: tax.normalized, kind: created!.kind, source: "NAV_IMPORT" },
       ip,
     });
+    await emitPartnerChanged(tx, created!);
     return created!.id;
   });
 }

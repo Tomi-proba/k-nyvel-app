@@ -13,6 +13,11 @@ ALTER TABLE users ADD COLUMN is_system boolean NOT NULL DEFAULT false;
 INSERT INTO users (id, email, name, password_hash, is_active, is_system)
 VALUES ('00000000-0000-4000-8000-00000000c0de', 'integracio@rendszer.invalid', 'Integrációs központ (automatikus)', '!', false, true);
 
+-- Az integrációból (másik modul eseményéből) létrejött bizonylat eredete.
+ALTER TABLE documents DROP CONSTRAINT documents_source_check;
+ALTER TABLE documents ADD CONSTRAINT documents_source_check
+  CHECK (source IN ('MANUAL', 'TEMPLATE', 'REVERSAL', 'NAV_IMPORT', 'BANK', 'CASH', 'OPENING', 'CLOSING', 'INTEGRATION'));
+
 -- A cég integrációs beállításai. A `linked_at` az összekapcsolás ideje (a központ a kapcsolódási kóddal
 -- köti össze, D13); `unlinked_at` a bontásé.
 CREATE TABLE integration_settings (

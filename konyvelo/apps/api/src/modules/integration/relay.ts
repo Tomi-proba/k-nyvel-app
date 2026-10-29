@@ -64,6 +64,8 @@ export async function relayOnce(db: Db, hub: HubClient, batch = 100): Promise<Re
   }
 
   await refreshHealthTodos(db);
+  // A központ kéréseinek nonce-ai csak az aláírás érvényességi idejéig kellenek (5 perc, bőven ráhagyva).
+  await db.execute(sql`DELETE FROM integration_nonces WHERE received_at < now() - interval '1 hour'`);
   return { ...out, todosReported };
 }
 

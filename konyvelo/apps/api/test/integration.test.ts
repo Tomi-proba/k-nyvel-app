@@ -1,0 +1,563 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { INBOUND_PATH, LINK_PATH, signedHeaders, validateEvent, type EventEnvelope, type HubClient, type InboundResult } from "@konyvelo/esemenyek";
+import type { ApprovalGroupDto, ApprovalResultDto, DocumentDto, IntegrationStatusDto } from "@konyvelo/shared";
+import { refreshHealthTodos, relayOnce } from "../src/modules/integration/relay";
+import { postDocument } from "../src/modules/documents";
+import { SYSTEM_USER } from "../src/modules/integration/inbound";
+import { createCompany, createTestApp, nextTaxNumber, ownerQuery, resetDatabase, setupAdmin, type Client, type TestContext } from "./helpers";
+
+/**
+ * Integráció (I2, TERV.md F14): a Könyvelő a központ helyett egy ál-központtal. A központ felőli kéréseket
+ * a teszt írja alá (ugyanazzal a sémával, mint a valódi központ); az átadó egy memóriabeli ál-klienssel fut.
+ * Semmilyen kérés nem megy ki a hálózatra.
+ */
+
+const SECRET = "konyvelo-kozpont-teszt-titok-0123456789abcdef";
+let ctx: TestContext;
+let admin: Client;
+let companyId: string;
+let taxNumber: string;
+let acc: Record<string, string>;
+let supplier: { id: string; taxNumber: string };
+let customer: { id: string; taxNumber: string };
+const c = () => `/api/companies/${companyId}`;
+
+/** Kérés a központ nevében (aláírva). */
+function hub(method: "POST" | "DELETE", path: string, body?: unknown, opts: { secret?: string; headers?: Record<string, string> } = {}) {
+  const text = body === undefined ? "" : JSON.stringify(body);
+  const headers = { "content-type": "application/json", ...signedHeaders(opts.secret ?? SECRET, "kozpont", method, path, text), ...opts.headers };
+  return ctx.app.inject({ method, url: path, headers, ...(text ? { payload: text } : {}) });
+}
+
+let seq = 0;
+function keszletEvent(type: string, version: number, recordType: string, recordId: string, payload: Record<string, unknown>, sequence = 1): EventEnvelope {
+  return {
+    id: randomUUID(),
+    type,
+    version,
+    source: { module: "keszlet", companyRef: "keszlet-ceg-1", recordType, recordId, sequence, url: `/${recordType}/${recordId}`, label: `${recordType} ${recordId}` },
+    occurredAt: new Date(Date.UTC(2026, 10, 2, 8, 0, seq++)).toISOString(),
+    payload,
+  };
+}
+
+const purchaseEvent = (id: string, over: Record<string, unknown> = {}) =>
+  keszletEvent("keszlet.beszerzes.veglegesitve", 2, "beszerzes", id, {
+    purchaseId: id,
+    receivedDate: "2026-11-02",
+    invoiceDate: "2026-11-02",
+    fulfillmentDate: "2026-11-02",
+    invoiceNumber: `SZ-${id}`,
+    supplier: { name: "Ajtó Kft.", taxNumber: supplier.taxNumber },
+    lines: [{ productId: "P1", productName: "Bejárati ajtó", quantity: 2, unit: "db", netAmount: 200_000_00, vatRate: 27, vatAmount: 54_000_00 }],
+    totals: { net: 200_000_00, vat: 54_000_00, gross: 254_000_00 },
+    ...over,
+  });
+
+const saleEvent = (id: string, over: Record<string, unknown> = {}) =>
+  keszletEvent("keszlet.eladas.veglegesitve", 2, "eladas", id, {
+    saleId: id,
+    date: "2026-11-03",
+    customer: { name: "Ügyfél Zrt.", taxNumber: customer.taxNumber },
+    cash: false,
+    invoiceNumber: null,
+    costOfGoods: 100_000_00,
+    lines: [{ productId: "P1", productName: "Bejárati ajtó", quantity: 1, unit: "db", netAmount: 150_000_00, vatRate: 27, vatAmount: 40_500_00 }],
+    totals: { net: 150_000_00, vat: 40_500_00, gross: 190_500_00 },
+    ...over,
+  });
+
+const withdrawEvent = (kind: "PURCHASE" | "SALE", recordType: string, id: string, date = "2026-11-04") =>
+  keszletEvent("keszlet.mozgas.sztornozva", 2, recordType, id, { movementKind: kind, movementId: id, date, reason: "Téves rögzítés" }, 2);
+
+async function deliver(event: EventEnvelope): Promise<InboundResult> {
+  const r = await hub("POST", INBOUND_PATH, { event, targetCompanyRef: companyId });
+  expect(r.statusCode, r.body).toBe(200);
+  return r.json();
+}
+
+async function link() {
+  const code = (await admin.post(`${c()}/integration/link-code`)).json().code as string;
+  const r = await hub("POST", LINK_PATH, { code, taxNumber });
+  expect(r.statusCode, r.body).toBe(200);
+  return r.json();
+}
+
+const outbox = async () => (await ownerQuery("SELECT envelope, sent_at FROM integration_outbox ORDER BY created_at, id")).rows.map((r) => r.envelope as EventEnvelope);
+const todos = async () => (await admin.get(`${c()}/integration/todos`)).json() as Array<{ id: string; kind: string; title: string; documentId: string | null }>;
+const settings = (over: Record<string, unknown> = {}) => ownerQuery(`UPDATE integration_settings SET ${Object.keys(over).map((k, i) => `${k} = $${i + 2}`).join(", ")} WHERE company_id = $1`, [companyId, ...Object.values(over)]);
+const doc = async (id: string) => (await admin.get(`${c()}/documents/${id}`)).json() as DocumentDto;
+
+/** Memóriabeli ál-központ az átadóhoz. */
+class FakeHub implements HubClient {
+  received: EventEnvelope[] = [];
+  resolved: string[] = [];
+  down = false;
+  rejectIds = new Set<string>();
+  async publish(events: EventEnvelope[]) {
+    if (this.down) throw new Error("Az integrációs központ most nem érhető el.");
+    const accepted: string[] = [];
+    const rejected: Array<{ id: string; error: string }> = [];
+    for (const e of events) {
+      if (this.rejectIds.has(e.id)) rejected.push({ id: e.id, error: "elutasítva" });
+      else {
+        if (!this.received.some((x) => x.id === e.id)) this.received.push(e);
+        accepted.push(e.id);
+      }
+    }
+    return { accepted, rejected };
+  }
+  async resolveTodo(_companyRef: string, key: string) {
+    if (this.down) throw new Error("nem érhető el");
+    this.resolved.push(key);
+  }
+  async links() {
+    return [];
+  }
+}
+
+beforeAll(async () => {
+  await resetDatabase();
+  ctx = await createTestApp({ hub: { url: "http://127.0.0.1:9", secret: SECRET } });
+  admin = await setupAdmin(ctx.app);
+  taxNumber = nextTaxNumber();
+  companyId = (await createCompany(admin, { taxNumber })).id;
+  await admin.post(`${c()}/fiscal-years`, { startDate: "2026-01-01", endDate: "2026-12-31" });
+  acc = Object.fromEntries(((await admin.get(`${c()}/accounts`)).json() as Array<{ id: string; number: string }>).map((a) => [a.number, a.id]));
+  const st = nextTaxNumber();
+  supplier = { id: (await admin.post(`${c()}/partners`, { kind: "SUPPLIER", name: "Ajtó Kft.", taxNumber: st })).json().id, taxNumber: st };
+  const ct = nextTaxNumber();
+  customer = { id: (await admin.post(`${c()}/partners`, { kind: "CUSTOMER", name: "Ügyfél Zrt.", taxNumber: ct })).json().id, taxNumber: ct };
+});
+afterAll(async () => ctx.close());
+
+describe("összekapcsolás (D13) és aláírás", () => {
+  it("összekapcsolás előtt nem keletkezik esemény, és bejövőt sem fogad", async () => {
+    const r = await admin.post(`${c()}/documents`, {
+      docType: "SZSZ", partnerId: supplier.id, externalNumber: "ELOTTE-1", description: "Iroda", issueDate: "2026-10-01", fulfillmentDate: "2026-10-01", accountingDate: "2026-10-01", post: true,
+      lines: [{ accountId: acc["529"], side: "D", amount: 1000 }, { accountId: acc["454"], side: "C", amount: 1000 }],
+    });
+    expect(r.statusCode, r.body).toBe(201);
+    expect(await outbox()).toEqual([]);
+    expect((await hub("POST", INBOUND_PATH, { event: purchaseEvent("B0"), targetCompanyRef: companyId })).statusCode).toBe(409);
+  });
+
+  it("kód nélkül, ismert adószámmal nem köthető össze; rossz, lejárt, felhasznált kód és más adószám elutasítva", async () => {
+    expect((await hub("POST", LINK_PATH, { code: "", taxNumber })).statusCode).toBe(422);
+    expect((await hub("POST", LINK_PATH, { code: "ABCD-EFGH-JKMN-PQRS", taxNumber })).statusCode).toBe(422);
+    const code = (await admin.post(`${c()}/integration/link-code`)).json().code as string;
+    expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    // Más cég adószámával a kód sem elég.
+    expect((await hub("POST", LINK_PATH, { code, taxNumber: nextTaxNumber() })).statusCode).toBe(422);
+    // Lejárt kód.
+    await ownerQuery("UPDATE integration_link_codes SET expires_at = now() - interval '1 minute' WHERE used_at IS NULL AND revoked_at IS NULL");
+    expect((await hub("POST", LINK_PATH, { code, taxNumber })).statusCode).toBe(422);
+    // A kódot csak a lenyomata őrzi.
+    expect((await ownerQuery("SELECT count(*)::int AS n FROM integration_link_codes WHERE code_hash LIKE $1", [`%${code.replace(/-/g, "")}%`])).rows[0].n).toBe(0);
+    expect((await admin.get(`${c()}/integration`)).json()).toMatchObject({ hubConfigured: true, linked: false });
+  });
+
+  it("aláírás nélkül, rossz titokkal vagy ismételt kéréssel semmi nem megy át", async () => {
+    expect((await ctx.app.inject({ method: "POST", url: LINK_PATH, headers: { "content-type": "application/json" }, payload: "{}" })).statusCode).toBe(401);
+    expect((await hub("POST", LINK_PATH, { code: "X", taxNumber }, { secret: "rossz-titok-0123456789abcdefghijklmnop" })).statusCode).toBe(401);
+    const text = JSON.stringify({ code: "X", taxNumber });
+    const headers = { "content-type": "application/json", ...signedHeaders(SECRET, "kozpont", "POST", LINK_PATH, text) };
+    expect((await ctx.app.inject({ method: "POST", url: LINK_PATH, headers, payload: text })).statusCode).toBe(422);
+    const replay = await ctx.app.inject({ method: "POST", url: LINK_PATH, headers, payload: text });
+    expect(replay.statusCode).toBe(401);
+    expect(replay.json()).toMatchObject({ code: "REPLAYED" });
+  });
+
+  it("érvényes kóddal összekapcsol: csak piszkozat mód, bevezető hónap, alapértelmezett számla-hozzárendelés", async () => {
+    expect(await link()).toEqual({ companyRef: companyId, companyName: expect.any(String), taxNumber });
+    const s = (await admin.get(`${c()}/integration`)).json() as IntegrationStatusDto;
+    expect(s).toMatchObject({ linked: true, postingMode: "DRAFT_ONLY", purchaseDateRule: "ASK" });
+    expect(s.draftOnlyUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(s.accounts).toMatchObject({ inventoryAccountId: acc["261"], cogsAccountId: acc["814"], payableAccountId: acc["454"], inputVatAccountId: acc["466"] });
+    const audit = await ownerQuery("SELECT action, user_id FROM audit_log WHERE company_id = $1 AND action LIKE 'integration.%' ORDER BY id", [companyId]);
+    expect(audit.rows.map((r) => r.action)).toEqual(expect.arrayContaining(["integration.link_code", "integration.link"]));
+  });
+});
+
+describe("kimenő események", () => {
+  beforeEach(async () => {
+    await ownerQuery("DELETE FROM integration_outbox");
+  });
+
+  it("könyvelés, párosítás, sztornó: a típusok, a sorrend és a tartalom helyes, és mind érvényes esemény", async () => {
+    const inv = await admin.post(`${c()}/documents`, {
+      docType: "SZSZ", partnerId: supplier.id, externalNumber: "KI-1", description: "Iroda", issueDate: "2026-11-02", fulfillmentDate: "2026-11-02", accountingDate: "2026-11-02", post: true,
+      lines: [{ accountId: acc["529"], side: "D", amount: 100_000 }, { accountId: acc["466"], side: "D", amount: 27_000 }, { accountId: acc["454"], side: "C", amount: 127_000 }],
+    });
+    const invoice = inv.json() as DocumentDto;
+    const payLine = invoice.lines.find((l) => l.accountId === acc["454"])!.id;
+    const pay = await admin.post(`${c()}/documents`, {
+      docType: "BANK", partnerId: supplier.id, description: "Kifizetés", issueDate: "2026-11-05", accountingDate: "2026-11-05", post: true,
+      lines: [{ accountId: acc["454"], side: "D", amount: 127_000 }, { accountId: acc["384"], side: "C", amount: 127_000 }], settlements: [{ itemLineId: payLine, amount: 127_000 }],
+    });
+    expect(pay.statusCode, pay.body).toBe(201);
+    const rev = await admin.post(`${c()}/documents/${invoice.id}/reverse`, { accountingDate: "2026-11-06", reason: "Téves" });
+    expect(rev.statusCode, rev.body).toBe(201);
+
+    const events = await outbox();
+    for (const e of events) expect(validateEvent(e).ok, JSON.stringify(e)).toBe(true);
+    expect(events.map((e) => `${e.type}@${e.version}#${e.source.sequence}`)).toEqual([
+      "konyvelo.bizonylat.konyvelve@2#1",
+      "konyvelo.kiegyenlites.rogzitve@2#1",
+      "konyvelo.bizonylat.konyvelve@2#1",
+      "konyvelo.kiegyenlites.bontva@1#2",
+      "konyvelo.bizonylat.sztornozva@1#2",
+    ]);
+    const [posted, settled, , unpaired, reversed] = events;
+    expect(posted!.source).toMatchObject({ module: "konyvelo", companyRef: companyId, recordType: "bizonylat", recordId: invoice.id, url: `/konyveles/${invoice.id}` });
+    expect(posted!.payload).toMatchObject({
+      serialNumber: invoice.serialNumber, docType: "SZSZ", externalNumber: "KI-1", currency: "HUF", partner: { name: "Ajtó Kft.", taxNumber: supplier.taxNumber }, corrects: null, reverses: null,
+      lines: [{ accountNumber: "529", side: "D", amount: 100_000 }, { accountNumber: "466", side: "D", amount: 27_000 }, { accountNumber: "454", side: "C", amount: 127_000, partner: { name: "Ajtó Kft." } }],
+    });
+    expect(posted!.causedBy).toBeUndefined();
+    expect(settled!.payload).toMatchObject({ documentId: pay.json().id, settledDocumentId: invoice.id, amount: 127_000, date: "2026-11-05" });
+    expect(unpaired!.payload).toMatchObject({ reason: "REVERSAL", amount: 127_000 });
+    expect(reversed!.payload).toMatchObject({ documentId: invoice.id, reversalSerialNumber: expect.stringMatching(/^SZT-/), accountingDate: "2026-11-06" });
+  });
+
+  it("helyesbítés: hivatkozással az eredetire; kézi párosítás és bontás; időszak zárása és feloldása; partner", async () => {
+    const orig = (await admin.post(`${c()}/documents`, {
+      docType: "VSZ", partnerId: customer.id, externalNumber: "V-1", description: "Eladás", issueDate: "2026-11-02", fulfillmentDate: "2026-11-02", accountingDate: "2026-11-02", dueDate: "2026-11-20", post: true,
+      lines: [{ accountId: acc["311"], side: "D", amount: 127_000 }, { accountId: acc["911"], side: "C", amount: 100_000 }, { accountId: acc["467"], side: "C", amount: 27_000 }],
+    })).json() as DocumentDto;
+    const hely = await admin.post(`${c()}/documents`, {
+      docType: "HELY", partnerId: customer.id, correctsDocumentId: orig.id, externalNumber: "V-1-H", description: "Engedmény", issueDate: "2026-11-10", fulfillmentDate: "2026-11-10", accountingDate: "2026-11-10", post: true,
+      lines: [{ accountId: acc["911"], side: "D", amount: 10_000 }, { accountId: acc["467"], side: "D", amount: 2_700 }, { accountId: acc["311"], side: "C", amount: 12_700 }],
+    });
+    expect(hely.statusCode, hely.body).toBe(201);
+    const bank = (await admin.post(`${c()}/documents`, {
+      docType: "BANK", partnerId: customer.id, description: "Befizetés", issueDate: "2026-11-15", accountingDate: "2026-11-15", post: true,
+      lines: [{ accountId: acc["384"], side: "D", amount: 50_000 }, { accountId: acc["311"], side: "C", amount: 50_000 }],
+    })).json() as DocumentDto;
+    const s = await admin.post(`${c()}/settlements`, { itemLineId: orig.lines[0]!.id, settlingLineId: bank.lines[1]!.id, amount: 50_000 });
+    expect(s.statusCode, s.body).toBe(201);
+    expect((await admin.delete(`${c()}/settlements/${s.json().id}`)).statusCode).toBe(200);
+    const periods = (await admin.get(`${c()}/fiscal-years`)).json()[0].periods as Array<{ id: string; startDate: string }>;
+    const jan = periods.find((p) => p.startDate === "2026-01-01")!;
+    expect((await admin.post(`${c()}/periods/${jan.id}/close`)).statusCode).toBe(200);
+    expect((await admin.post(`${c()}/periods/${jan.id}/reopen`, { reason: "Teszt" })).statusCode).toBe(200);
+    expect((await admin.patch(`${c()}/partners/${customer.id}`, { city: "Szeged" })).statusCode).toBe(200);
+    // Ami nem közös adat (pl. megjegyzés), nem megy ki.
+    expect((await admin.patch(`${c()}/partners/${customer.id}`, { notes: "csak belső" })).statusCode).toBe(200);
+
+    const events = await outbox();
+    for (const e of events) expect(validateEvent(e).ok, JSON.stringify(e)).toBe(true);
+    expect(events.map((e) => e.type)).toEqual([
+      "konyvelo.bizonylat.konyvelve",
+      "konyvelo.bizonylat.konyvelve",
+      "konyvelo.bizonylat.konyvelve",
+      "konyvelo.kiegyenlites.rogzitve",
+      "konyvelo.kiegyenlites.bontva",
+      "konyvelo.idoszak.lezarva",
+      "konyvelo.idoszak.feloldva",
+      "torzs.partner.valtozott",
+    ]);
+    expect(events[1]!.payload).toMatchObject({ docType: "HELY", corrects: { documentId: orig.id, serialNumber: orig.serialNumber } });
+    expect(events[4]!.payload).toMatchObject({ reason: "MANUAL" });
+    expect(events[5]!.payload).toEqual({ kind: "PERIOD", startDate: "2026-01-01", endDate: "2026-01-31" });
+    expect(events[7]!.payload).toMatchObject({ partner: { name: "Ügyfél Zrt.", taxNumber: customer.taxNumber }, anonymized: false });
+  });
+
+  it("visszagörgetett műveletből nem lesz esemény", async () => {
+    const bad = await admin.post(`${c()}/documents`, {
+      docType: "SZSZ", partnerId: supplier.id, externalNumber: "ROSSZ", description: "Rossz", issueDate: "2026-11-02", fulfillmentDate: "2026-11-02", accountingDate: "2026-11-02", post: true,
+      lines: [{ accountId: acc["529"], side: "D", amount: 100 }, { accountId: acc["454"], side: "C", amount: 99 }],
+    });
+    expect(bad.statusCode).toBe(422);
+    expect(await outbox()).toEqual([]);
+  });
+});
+
+describe("átadó", () => {
+  it("csak a visszaigazolt esemény számít elküldöttnek; leállásnál marad, és tartós hibánál Teendő lesz", async () => {
+    await ownerQuery("DELETE FROM integration_outbox");
+    await admin.patch(`${c()}/partners/${supplier.id}`, { city: "Pécs" });
+    await admin.patch(`${c()}/partners/${supplier.id}`, { city: "Győr" });
+    const fake = new FakeHub();
+    fake.down = true;
+    expect(await relayOnce(ctx.db, fake)).toMatchObject({ sent: 0, failed: 2 });
+    expect((await ownerQuery("SELECT count(*)::int AS n FROM integration_outbox WHERE sent_at IS NULL")).rows[0].n).toBe(2);
+
+    // 30 percnél régebben váró esemény: Teendő (az esemény nem veszett el).
+    await ownerQuery("UPDATE integration_outbox SET created_at = now() - interval '31 minutes'");
+    await refreshHealthTodos(ctx.db);
+    expect((await todos()).map((t) => t.kind)).toContain("HUB_UNREACHABLE");
+
+    fake.down = false;
+    const [first] = await outbox();
+    fake.rejectIds.add(first!.id);
+    expect(await relayOnce(ctx.db, fake)).toMatchObject({ sent: 1, failed: 1 });
+    fake.rejectIds.clear();
+    expect(await relayOnce(ctx.db, fake)).toMatchObject({ sent: 1, failed: 0 });
+    expect(await relayOnce(ctx.db, fake)).toMatchObject({ sent: 0, failed: 0 });
+    expect(fake.received.map((e) => e.payload.partner)).toEqual([expect.objectContaining({ name: "Ajtó Kft." }), expect.objectContaining({ name: "Ajtó Kft." })]);
+    expect((await todos()).map((t) => t.kind)).not.toContain("HUB_UNREACHABLE");
+  });
+});
+
+describe("megszakadt átadás", () => {
+  it("ha a központ átvette, de a visszaigazolás elveszett, az újraküldés nem duplikál", async () => {
+    await ownerQuery("DELETE FROM integration_outbox");
+    await admin.patch(`${c()}/partners/${supplier.id}`, { city: "Eger" });
+    const fake = new FakeHub();
+    const original = fake.publish.bind(fake);
+    let lose = true;
+    fake.publish = async (events) => {
+      const r = await original(events);
+      if (lose) {
+        lose = false;
+        throw new Error("a kapcsolat a válasz előtt megszakadt");
+      }
+      return r;
+    };
+    expect(await relayOnce(ctx.db, fake)).toMatchObject({ sent: 0, failed: 1 });
+    expect(await relayOnce(ctx.db, fake)).toMatchObject({ sent: 1, failed: 0 });
+    expect(fake.received).toHaveLength(1);
+  });
+
+  it("a gépi felhasználó nem vehető fel cégtagnak, és nem számít az első indításnál", async () => {
+    const r = await admin.post(`${c()}/members`, { email: "integracio@rendszer.invalid", role: "ADMIN" });
+    expect(r.statusCode).toBe(422);
+    expect((await ctx.app.inject({ method: "GET", url: "/api/setup/status" })).json()).toEqual({ needsSetup: false });
+    expect((await ownerQuery("SELECT count(*)::int AS n FROM company_memberships WHERE user_id = '00000000-0000-4000-8000-00000000c0de'")).rows[0].n).toBe(0);
+  });
+});
+
+describe("beérkező: beszerzés (KK1)", () => {
+  it("szállítói számla piszkozat 261/466/454-gyel, a termék-sorokkal, Teendővel; ugyanaz az esemény 2×, 5× és párhuzamosan is egyszer hat", async () => {
+    const e = purchaseEvent("B1");
+    const first = await deliver(e);
+    expect(first).toMatchObject({ outcome: "TODO", target: { recordType: "bizonylat" }, todo: { key: "beszerzes:B1" } });
+    expect(await deliver(e)).toMatchObject({ outcome: "DUPLICATE", target: first.target });
+    const parallel = await Promise.all(Array.from({ length: 5 }, () => hub("POST", INBOUND_PATH, { event: e, targetCompanyRef: companyId })));
+    expect(parallel.map((r) => r.json().outcome)).toEqual(Array(5).fill("DUPLICATE"));
+    expect((await ownerQuery("SELECT count(*)::int AS n FROM documents WHERE description LIKE 'Készlet-beszerzés%'")).rows[0].n).toBe(1);
+
+    const d = await doc(first.target!.recordId);
+    expect(d).toMatchObject({ status: "DRAFT", docType: "SZSZ", source: "INTEGRATION", partnerId: supplier.id, externalNumber: "SZ-B1", accountingDate: "2026-11-02", createdByName: "Integrációs központ (automatikus)" });
+    expect(d.lines.map((l) => [l.accountNumber, l.side, l.amount])).toEqual([["261", "D", 200_000_00], ["466", "D", 54_000_00], ["454", "C", 254_000_00]]);
+    const info = (await admin.get(`${c()}/documents/${d.id}/integration`)).json();
+    expect(info).toMatchObject({ sources: [{ module: "keszlet", kind: "PURCHASE", label: "beszerzes B1" }], dateChoice: null, isCogs: false });
+    expect(info.stockLines).toEqual([expect.objectContaining({ productName: "Bejárati ajtó", quantity: 2, netAmount: 200_000_00 })]);
+    expect((await todos()).find((t) => t.documentId === d.id)).toMatchObject({ kind: "PURCHASE_APPROVAL" });
+  });
+
+  it("a már rögzített számlát nem rögzíti kétszer, csak párosítja", async () => {
+    const manual = (await admin.post(`${c()}/documents`, {
+      docType: "SZSZ", partnerId: supplier.id, externalNumber: "SZ-B2", description: "Kézi", issueDate: "2026-11-02", fulfillmentDate: "2026-11-02", accountingDate: "2026-11-02", post: true,
+      lines: [{ accountId: acc["261"], side: "D", amount: 200_000_00 }, { accountId: acc["466"], side: "D", amount: 54_000_00 }, { accountId: acc["454"], side: "C", amount: 254_000_00 }],
+    })).json() as DocumentDto;
+    expect(await deliver(purchaseEvent("B2"))).toMatchObject({ outcome: "APPLIED", target: { recordId: manual.id } });
+  });
+
+  it("nem találgat: ismeretlen szállító, hiányzó számlaszám és eltérő dátumok esetén piszkozat + Teendő az okkal", async () => {
+    const r = await deliver(purchaseEvent("B3", { supplier: { name: "Ismeretlen Bt.", taxNumber: nextTaxNumber() }, invoiceNumber: null, invoiceDate: "2026-10-30" }));
+    expect(r.outcome).toBe("TODO");
+    const d = await doc(r.target!.recordId);
+    expect(d.partnerId).toBeNull();
+    const t = (await todos()).filter((x) => x.documentId === d.id);
+    expect(t.map((x) => x.kind).sort()).toEqual(["MISSING_DATA", "PURCHASE_APPROVAL"]);
+    expect((await admin.get(`${c()}/documents/${d.id}/integration`)).json().dateChoice).toEqual({ receivedDate: "2026-11-02", invoiceDate: "2026-10-30" });
+  });
+});
+
+describe("beérkező: eladás és ELÁBÉ (KK2, D9)", () => {
+  it("az ELÁBÉ automatikus módban is piszkozat, és a gépi felhasználó nem könyvelheti; árbevétel számla nélkül nem lesz", async () => {
+    await settings({ posting_mode: "AUTO", purchase_date_rule: "RECEIVED" });
+    const r = await deliver(saleEvent("E1"));
+    expect(r).toMatchObject({ outcome: "TODO", todo: { key: "elabe:E1" } });
+    const d = await doc(r.target!.recordId);
+    expect(d).toMatchObject({ status: "DRAFT", docType: "VEGY" });
+    expect(d.lines.map((l) => [l.accountNumber, l.side, l.amount])).toEqual([["814", "D", 100_000_00], ["261", "C", 100_000_00]]);
+    await expect(ctx.db.transaction((tx) => postDocument(tx, companyId, d.id, SYSTEM_USER, "teszt"))).rejects.toThrow(/csak ember/);
+    const t = await todos();
+    expect(t.find((x) => x.documentId === d.id)?.kind).toBe("COGS_APPROVAL");
+    expect(t.find((x) => x.title.includes("nincs meg a vevőszámla"))?.kind).toBe("INVOICE_MISSING");
+    await settings({ posting_mode: "DRAFT_ONLY", purchase_date_rule: "ASK" });
+  });
+
+  it("a meglévő vevőszámlával párosít (kétszer nem könyvel árbevételt)", async () => {
+    await admin.post(`${c()}/documents`, {
+      docType: "VSZ", partnerId: customer.id, externalNumber: "VSZ-77", description: "Eladás", issueDate: "2026-11-03", fulfillmentDate: "2026-11-03", accountingDate: "2026-11-03", dueDate: "2026-11-20", post: true,
+      lines: [{ accountId: acc["311"], side: "D", amount: 190_500_00 }, { accountId: acc["911"], side: "C", amount: 150_000_00 }, { accountId: acc["467"], side: "C", amount: 40_500_00 }],
+    });
+    const before = (await todos()).length;
+    const r = await deliver(saleEvent("E2", { invoiceNumber: "VSZ-77" }));
+    expect(r.outcome).toBe("TODO"); // az ELÁBÉ jóváhagyásra vár
+    const after = await todos();
+    expect(after.length).toBe(before + 1);
+    expect(after.some((x) => x.title.includes("E2") || x.title.includes("VSZ-77"))).toBe(false);
+  });
+});
+
+describe("beérkező: visszavonás (KK4, F14.2)", () => {
+  it("érintetlen piszkozat törlődik; módosított piszkozat Teendő", async () => {
+    const a = await deliver(purchaseEvent("B10"));
+    expect(await deliver(withdrawEvent("PURCHASE", "beszerzes", "B10"))).toMatchObject({ outcome: "APPLIED" });
+    expect((await admin.get(`${c()}/documents/${a.target!.recordId}`)).statusCode).toBe(404);
+    expect((await todos()).some((t) => t.documentId === a.target!.recordId)).toBe(false);
+
+    const b = await deliver(purchaseEvent("B11"));
+    const d = await doc(b.target!.recordId);
+    const patch = await admin.patch(`${c()}/documents/${d.id}`, {
+      docType: "SZSZ", partnerId: supplier.id, externalNumber: "SZ-B11", description: "kézzel átírva", issueDate: "2026-11-02", fulfillmentDate: "2026-11-02", accountingDate: "2026-11-02",
+      lines: d.lines.map((l) => ({ accountId: l.accountId, side: l.side, amount: l.amount })),
+    });
+    expect(patch.statusCode, patch.body).toBe(200);
+    expect(await deliver(withdrawEvent("PURCHASE", "beszerzes", "B11"))).toMatchObject({ outcome: "TODO" });
+    expect((await doc(d.id)).status).toBe("DRAFT");
+    expect((await todos()).find((t) => t.documentId === d.id && t.kind === "SOURCE_WITHDRAWN")).toBeTruthy();
+  });
+
+  it("könyvelt tétel: „csak piszkozat” módban sztornó-Teendő; automatikus módban sztornó, a forrás felé visszhang nélkül", async () => {
+    const approve = async (id: string) => {
+      const r = await admin.post(`${c()}/documents/${id}/post`);
+      expect(r.statusCode, r.body).toBe(200);
+    };
+    const a = await deliver(purchaseEvent("B20"));
+    await approve(a.target!.recordId);
+    expect(await deliver(withdrawEvent("PURCHASE", "beszerzes", "B20"))).toMatchObject({ outcome: "TODO", todo: { key: `sztorno:${a.target!.recordId}` } });
+    expect((await doc(a.target!.recordId)).reversedBy).toBeNull();
+    // Egy kattintásos sztornó a javasolt dátummal.
+    const rev = await admin.post(`${c()}/documents/${a.target!.recordId}/integration/reverse`, {});
+    expect(rev.statusCode, rev.body).toBe(200);
+    expect((await doc(a.target!.recordId)).reversedBy).toBeTruthy();
+
+    await settings({ posting_mode: "AUTO" });
+    await ownerQuery("DELETE FROM integration_outbox");
+    const ev = purchaseEvent("B21");
+    const b = await deliver(ev);
+    await approve(b.target!.recordId);
+    const withdraw = withdrawEvent("PURCHASE", "beszerzes", "B21");
+    expect(await deliver(withdraw)).toMatchObject({ outcome: "APPLIED" });
+    const reversed = await doc(b.target!.recordId);
+    expect(reversed.reversedBy?.serialNumber).toMatch(/^SZT-/);
+    const events = await outbox();
+    // A jóváhagyott beszerzés könyvelése a beszerzés eseményére hivatkozik, a sztornó a visszavonáséra (a Készlet felé nem megy vissza).
+    expect(events.map((e) => [e.type, e.causedBy])).toEqual([
+      ["konyvelo.bizonylat.konyvelve", ev.id],
+      ["konyvelo.bizonylat.sztornozva", withdraw.id],
+    ]);
+    await settings({ posting_mode: "DRAFT_ONLY" });
+  });
+
+  it("lezárt időszakba eső sztornót nem tesz át más napra: Teendő", async () => {
+    await settings({ posting_mode: "AUTO" });
+    const a = await deliver(purchaseEvent("B30", { receivedDate: "2026-02-02", invoiceDate: "2026-02-02", fulfillmentDate: "2026-02-02" }));
+    expect((await admin.post(`${c()}/documents/${a.target!.recordId}/post`)).statusCode).toBe(200);
+    const periods = (await admin.get(`${c()}/fiscal-years`)).json()[0].periods as Array<{ id: string; startDate: string }>;
+    const feb = periods.find((p) => p.startDate === "2026-02-01")!;
+    expect((await admin.post(`${c()}/periods/${feb.id}/close`)).statusCode, "február zárása").toBe(200);
+    const r = await deliver(withdrawEvent("PURCHASE", "beszerzes", "B30", "2026-02-10"));
+    expect(r.outcome).toBe("TODO");
+    expect((await doc(a.target!.recordId)).reversedBy).toBeNull();
+    expect((await todos()).find((t) => t.documentId === a.target!.recordId && t.kind === "REVERSAL_APPROVAL")).toBeTruthy();
+    await admin.post(`${c()}/periods/${feb.id}/reopen`, { reason: "Teszt" });
+    await settings({ posting_mode: "DRAFT_ONLY" });
+  });
+
+  it("ha nincs hozzá tétel, nem hallgat el: Teendő", async () => {
+    expect(await deliver(withdrawEvent("SALE", "eladas", "NINCS"))).toMatchObject({ outcome: "TODO" });
+  });
+});
+
+describe("csoportos jóváhagyás (F14.8)", () => {
+  it("napra és fajtára csoportosít; csak a hiánytalan tételek könyvelhetők, egy ember kattintására; ismételt kérés nem könyvel kétszer", async () => {
+    // Tiszta kiinduló állapot: a korábbi jóváhagyandók lezárva.
+    await ownerQuery("UPDATE integration_todos SET resolved_at = now() WHERE resolved_at IS NULL");
+    const ok1 = await deliver(purchaseEvent("C1", { receivedDate: "2026-11-12", invoiceDate: "2026-11-12", fulfillmentDate: "2026-11-12" }));
+    const ok2 = await deliver(purchaseEvent("C2", { receivedDate: "2026-11-12", invoiceDate: "2026-11-12", fulfillmentDate: "2026-11-12" }));
+    const missing = await deliver(purchaseEvent("C3", { receivedDate: "2026-11-12", invoiceDate: "2026-11-12", fulfillmentDate: "2026-11-12", supplier: { name: "Ismeretlen", taxNumber: nextTaxNumber() } }));
+    const cogs = await deliver(saleEvent("C4", { date: "2026-11-12" }));
+
+    const groups = (await admin.get(`${c()}/integration/approvals`)).json() as ApprovalGroupDto[];
+    expect(groups.map((g) => [g.kind, g.date, g.items.length, g.completeCount])).toEqual([
+      ["PURCHASE", "2026-11-12", 3, 2],
+      ["COGS", "2026-11-12", 1, 1],
+    ]);
+    const bad = groups[0]!.items.find((i) => i.documentId === missing.target!.recordId)!;
+    expect(bad.complete).toBe(false);
+    expect(bad.problems.join(" ")).toMatch(/partner|szállító/i);
+    // A próbakönyvelés nem hagy nyomot: sorszám sem fogy el.
+    expect((await doc(ok1.target!.recordId)).status).toBe("DRAFT");
+
+    const batchId = randomUUID();
+    const ids = [ok1.target!.recordId, ok2.target!.recordId, missing.target!.recordId, cogs.target!.recordId];
+    const res = (await admin.post(`${c()}/integration/approvals`, { batchId, documentIds: ids })).json() as ApprovalResultDto;
+    expect(res.results.map((r) => [r.documentId, r.ok])).toEqual([
+      [ok1.target!.recordId, true],
+      [ok2.target!.recordId, true],
+      [missing.target!.recordId, false],
+      [cogs.target!.recordId, true],
+    ]);
+    expect(res.results[3]!.serialNumber).toMatch(/^VEGY-/);
+    // Ugyanaz a kérés még egyszer: ugyanaz az eredmény, újabb könyvelés nélkül.
+    const again = (await admin.post(`${c()}/integration/approvals`, { batchId, documentIds: ids })).json() as ApprovalResultDto;
+    expect(again).toEqual(res);
+    expect((await ownerQuery("SELECT count(*)::int AS n FROM documents WHERE status = 'POSTED' AND id = ANY($1::uuid[])", [ids])).rows[0].n).toBe(3);
+    // A jóváhagyó neve az ELÁBÉ-n: ember hagyta jóvá.
+    expect((await doc(cogs.target!.recordId)).postedByName).toBe("Admin Anna");
+    const audit = await ownerQuery("SELECT after FROM audit_log WHERE action = 'integration.approve_batch' AND entity_id = $1", [batchId]);
+    expect(audit.rows).toHaveLength(1);
+  });
+
+  it("dátumválasztás csoportosan: a jóváhagyó választ, a program nem", async () => {
+    const r = await deliver(purchaseEvent("C5", { receivedDate: "2026-11-14", invoiceDate: "2026-11-13", fulfillmentDate: "2026-11-13" }));
+    const id = r.target!.recordId;
+    const noChoice = (await admin.post(`${c()}/integration/approvals`, { batchId: randomUUID(), documentIds: [id] })).json() as ApprovalResultDto;
+    expect(noChoice.results[0]).toMatchObject({ ok: false, message: expect.stringMatching(/Válassza ki a könyvelés dátumát/) });
+    const withChoice = (await admin.post(`${c()}/integration/approvals`, { batchId: randomUUID(), documentIds: [id], purchaseDate: "RECEIVED" })).json() as ApprovalResultDto;
+    expect(withChoice.results[0]!.ok).toBe(true);
+    expect((await doc(id)).accountingDate).toBe("2026-11-14");
+  });
+
+  it("nem jóváhagyásra váró bizonylatot nem könyvel ezen az úton", async () => {
+    const manual = (await admin.post(`${c()}/documents`, { docType: "VEGY", description: "kézi piszkozat", accountingDate: "2026-11-20" })).json() as DocumentDto;
+    const res = (await admin.post(`${c()}/integration/approvals`, { batchId: randomUUID(), documentIds: [manual.id] })).json() as ApprovalResultDto;
+    expect(res.results[0]).toMatchObject({ ok: false });
+  });
+});
+
+describe("bevezető hónap, termékek, partnerek, ismeretlen esemény", () => {
+  it("a bevezető hónap letelte után Teendő, de magától nem kapcsol át", async () => {
+    await settings({ draft_only_until: "2026-01-01" });
+    await refreshHealthTodos(ctx.db);
+    expect((await todos()).filter((t) => t.kind === "INTRO_MONTH")).toHaveLength(1);
+    await refreshHealthTodos(ctx.db);
+    expect((await todos()).filter((t) => t.kind === "INTRO_MONTH")).toHaveLength(1);
+    expect(((await admin.get(`${c()}/integration`)).json() as IntegrationStatusDto).postingMode).toBe("DRAFT_ONLY");
+  });
+
+  it("termékjegyzék a Készletből; partner: csak pontos adószám-egyezésnél frissít, egyébként Teendő", async () => {
+    expect(await deliver(keszletEvent("keszlet.termek.valtozott", 1, "termek", "P9", { productId: "P9", name: "Kilincs", sku: "K-9", unit: "db", vatRate: 27, active: true }))).toMatchObject({ outcome: "APPLIED" });
+    expect((await admin.get(`${c()}/integration/products?q=kil`)).json()).toEqual([{ productId: "P9", name: "Kilincs", sku: "K-9", unit: "db", vatRate: 27 }]);
+
+    await ownerQuery("DELETE FROM integration_outbox");
+    const renamed = keszletEvent("torzs.partner.valtozott", 1, "partner", "X1", { partner: { name: "Ajtó és Ablak Kft.", taxNumber: supplier.taxNumber }, anonymized: false });
+    expect(await deliver(renamed)).toMatchObject({ outcome: "APPLIED", target: { recordId: supplier.id } });
+    expect((await admin.get(`${c()}/partners/${supplier.id}`)).json().name).toBe("Ajtó és Ablak Kft.");
+    // A visszhang tiltása: a Könyvelő eseménye a beérkezettre hivatkozik.
+    expect((await outbox()).map((e) => e.causedBy)).toEqual([renamed.id]);
+    expect(await deliver(keszletEvent("torzs.partner.valtozott", 1, "partner", "X2", { partner: { name: "Névrokon Kft." }, anonymized: false }))).toMatchObject({ outcome: "TODO" });
+    expect(await deliver(keszletEvent("torzs.partner.valtozott", 1, "partner", "X3", { partner: { name: "Ajtó", taxNumber: supplier.taxNumber }, anonymized: true }))).toMatchObject({ outcome: "TODO" });
+  });
+
+  it("ismeretlen eseményverzió: Teendő, nem csendes elutasítás", async () => {
+    const old = keszletEvent("keszlet.eladas.veglegesitve", 1, "eladas", "V1", { saleId: "V1", date: "2026-11-02", customer: null, cash: true, costOfGoods: 1, lines: [{ productId: "P", quantity: 1, unitPrice: 1, vatRate: 27 }] });
+    expect(await deliver(old)).toMatchObject({ outcome: "TODO", todo: { key: "nem-tamogatott:keszlet.eladas.veglegesitve@1" } });
+  });
+
+  it("a központ felőli bontás után nem fogad és nem küld", async () => {
+    expect((await hub("DELETE", `${LINK_PATH}/${companyId}`)).statusCode).toBe(204);
+    expect((await hub("POST", INBOUND_PATH, { event: purchaseEvent("Z1"), targetCompanyRef: companyId })).statusCode).toBe(409);
+    await ownerQuery("DELETE FROM integration_outbox");
+    await admin.patch(`${c()}/partners/${customer.id}`, { city: "Debrecen" });
+    expect(await outbox()).toEqual([]);
+  });
+});
