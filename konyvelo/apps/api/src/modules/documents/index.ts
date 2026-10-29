@@ -563,8 +563,9 @@ export async function postDocument(tx: Tx, companyId: string, docId: string, use
     ip,
   });
   // Integráció (I2): a kimenő esemény ugyanebben a tranzakcióban; a bizonylat Teendői lezárulnak.
-  await emitDocumentPosted(tx, posted!);
+  // (Előbb a régi Teendők zárulnak, hogy a könyveléskor keletkező új, tájékoztató Teendő megmaradjon.)
   await resolveDocumentTodos(tx, companyId, doc.id, user.id);
+  await emitDocumentPosted(tx, posted!);
   return posted!;
 }
 

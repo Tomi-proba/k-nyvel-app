@@ -54,6 +54,8 @@ gateway.digests.INBOUND = [
 const port = Number(process.env.E2E_PORT ?? 3100);
 const config = {
   ...loadConfig({ DATABASE_URL: appUrl, LOG_LEVEL: "warn" }),
+  // Integráció: a központ helyett a teszt ír alá (az átadó nem fut, semmi nem megy ki).
+  hub: { url: "http://127.0.0.1:9", secret: "e2e-kozpont-titok-0123456789abcdefghijklmnop" },
   // A csatolmányok egy ideiglenes mappába kerülnek.
   fileStore: { kind: "local" as const, dir: mkdtempSync(path.join(tmpdir(), "konyvelo-e2e-csatolmany-")) },
   port,

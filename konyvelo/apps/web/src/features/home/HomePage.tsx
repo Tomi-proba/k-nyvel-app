@@ -154,6 +154,27 @@ function TodoCard() {
       tone: "info",
     });
   }
+  if (t.integration) {
+    // A Készletből jött, jóváhagyásra váró tételek egy helyen, csoportosan (F14.8).
+    if (t.integration.approvals > 0) {
+      items.push({
+        key: "int-approvals",
+        to: "/konyveles/jovahagyas",
+        title: `${t.integration.approvals} tétel érkezett a Készletből jóváhagyásra`,
+        detail: "Napra és fajtára csoportosítva nézheti át; a hiánytalanokat egyszerre is jóváhagyhatja.",
+        tone: "info",
+      });
+    }
+    for (const it of t.integration.todos.filter((x) => !["PURCHASE_APPROVAL", "COGS_APPROVAL", "REVERSAL_APPROVAL"].includes(x.kind))) {
+      items.push({
+        key: `int-${it.id}`,
+        to: it.documentId ? `/konyveles/${it.documentId}` : it.kind === "PARTNER" ? "/partnerek" : "/beallitasok/integracio",
+        title: it.title,
+        ...(it.detail ? { detail: it.detail } : {}),
+        tone: it.kind === "HUB_UNREACHABLE" || it.kind === "UNSUPPORTED" ? "danger" : it.kind === "INTRO_MONTH" ? "info" : "warning",
+      });
+    }
+  }
   if (t.unmappedAccounts > 0) {
     items.push({
       key: "mapping",

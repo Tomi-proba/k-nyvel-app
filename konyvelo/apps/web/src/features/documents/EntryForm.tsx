@@ -33,6 +33,7 @@ import {
   type Header,
   type Row,
 } from "./entry-model";
+import { DocumentIntegrationPanel, StockLinesEditor } from "../integration/IntegrationPages";
 import { AttachmentsSection } from "./AttachmentsSection";
 import { PreviewDialog, type PreviewData } from "./PreviewDialog";
 import { deadlineText, useInvalidateDocuments, useTemplates } from "./queries";
@@ -631,6 +632,8 @@ export function EntryForm({ initial, draftId, reference }: { initial: EntryState
         </div>
       </form>
 
+      {draftId && <DocumentIntegrationPanel documentId={draftId} posted={false} />}
+      {draftId && <StockLinesEditor documentId={draftId} docType={state.header.docType} />}
       {draftId ? (
         <AttachmentsSection documentId={draftId} posted={false} />
       ) : (

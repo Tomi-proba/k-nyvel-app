@@ -91,7 +91,7 @@ export class Client {
   private cookie: string | null = null;
   constructor(private readonly app: FastifyInstance) {}
 
-  async request(method: "GET" | "POST" | "PATCH" | "DELETE", url: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<LightMyRequestResponse> {
+  async request(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", url: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<LightMyRequestResponse> {
     const headers: Record<string, string> = { ...(method !== "GET" ? { [CSRF_HEADER]: "1" } : {}), ...extraHeaders };
     if (this.cookie) headers.cookie = this.cookie;
     const res = await this.app.inject({ method, url, headers, ...(body !== undefined ? { payload: body as object } : {}) });
@@ -107,6 +107,7 @@ export class Client {
   get = (url: string) => this.request("GET", url);
   post = (url: string, body?: unknown, headers?: Record<string, string>) => this.request("POST", url, body ?? {}, headers);
   patch = (url: string, body?: unknown) => this.request("PATCH", url, body ?? {});
+  put = (url: string, body?: unknown) => this.request("PUT", url, body ?? {});
   delete = (url: string) => this.request("DELETE", url);
 }
 

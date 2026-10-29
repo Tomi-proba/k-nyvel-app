@@ -350,3 +350,14 @@ kötelező.
 3. **A számla tételsorait** (`queryInvoiceData`) is letöltsük, vagy elég a kivonat (`queryInvoiceDigest`)?
    - **Javaslat:** a kivonat a javaslathoz, a teljes számlaadat kérésre, egy számlánál. Így kevesebb hívás
      megy a NAV-hoz (1 kérés/mp).
+
+**Állapot (2026-10-29): I2 (a Könyvelő bekötése az integrációs központba) kész** – a részletes terv és a
+döntések: AWEBOLDAL `TERV.md` F14 (csoportos jóváhagyás: F14.8).
+
+- `0011_integracio.sql`: gépi felhasználó, beállítások (mód, bevezető hónap, beszerzési dátumszabály,
+  számla-hozzárendelés), kapcsolódási kódok, kimenő és bejövő tábla, nonce, forráskapcsolatok, Teendők,
+  termékjegyzék, a bizonylat termék-sorai.
+- `modules/integration`: kimenő események (`outbox.ts`), átadó (`relay.ts`), beérkező kezelők
+  (`inbound.ts`), csoportos jóváhagyás (`approvals.ts`), aláírt központ-végpontok és beállítások
+  (`index.ts`).
+- Tesztek: `integration.test.ts` (ál-központtal), böngészős teszt a teljes útra.

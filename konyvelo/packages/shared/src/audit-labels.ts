@@ -29,6 +29,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "integration.approve_batch": "Csoportos jóváhagyás (integráció)",
   "integration.date_choice": "Könyvelési dátum választása (Készlet-beszerzés)",
   "integration.todo_resolve": "Integrációs Teendő lezárása",
+  "document.stock_lines": "A bizonylat termékeinek megadása",
   "period.close": "Havi időszak lezárása",
   "period.reopen": "Havi időszak feloldása",
   "fiscal_year.start_closing": "Zárlat indítása",

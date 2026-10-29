@@ -282,6 +282,45 @@ A bizonylathoz (piszkozathoz és könyvelthez is) PDF, JPEG vagy PNG fájl tölt
 
 **Súgó:** a fejléc *Súgó* gombja: a fő műveletek lépésről lépésre, kezdőknek.
 
+## Integráció a többi programmal (Készletfigyelő, eÁFA)
+
+A Könyvelő az integrációs központon (AWEBOLDAL repó, `apps/kozpont`) keresztül kapcsolódik a cég többi
+programjához (TERV.md F14). **Központ nélkül, vagy amíg a cég nincs összekapcsolva, pontosan úgy működik,
+mint eddig.**
+
+- **Bekapcsolás:** `.env`: `KOZPONT_URL` és `KOZPONT_TITOK` (ugyanaz, mint a központban a
+  `KOZPONT_KONYVELO_TITOK`), lásd ELESITES.md 4. pont. Az átadó a szerverrel együtt indul.
+- **Összekapcsolás (D13):** *Beállítások → Integráció → Kapcsolódási kód készítése*. Egyszer használható,
+  24 órán belül lejár; csak a lenyomata tárolódik. Az adószám csak kiegészítő ellenőrzés, önmagában soha
+  nem elég.
+- **Kimenő események** (a művelet saját tranzakciójában, a kimenő táblán át):
+  - könyvelt bizonylat (a helyesbítő is), sztornó;
+  - párosítás és bontás;
+  - időszak és üzleti év zárása, feloldása;
+  - partner.
+- **Beérkező események:**
+  - Készlet-beszerzés → szállítói számla piszkozata (T 261 / T 466 / K 454);
+  - Készlet-eladás → az ELÁBÉ (T 814 / K 261) **mindig piszkozat, ember hagyja jóvá**; árbevételt számla
+    nélkül nem könyvelünk;
+  - visszavonás → érintetlen piszkozat törlése, egyébként sztornó vagy Teendő;
+  - a Készlet termékei (a termékkérdéshez);
+  - partner (csak pontos adószám-egyezésnél).
+
+  Ugyanaz az esemény többször megérkezve is egyszer hat.
+- **„Csak piszkozat” bevezető mód:** az összekapcsoláskor magától bekapcsol. Egy hónap után Teendő
+  emlékeztet, de magától nem kapcsol át.
+- **Csoportos jóváhagyás:** *Kezdőlap → „… tétel érkezett a Készletből”* (`/konyveles/jovahagyas`).
+  - Napra és fajtára csoportosítva.
+  - Csak a hiánytalan tételek jelölhetők ki; hiánytalan az, amelyet a könyvelési ellenőrzés most elfogadna,
+    és ezt próbakönyveléssel ellenőrizzük.
+  - A könyvelés egy ember kattintására, az ő nevével történik.
+- **Forrásjelölés:** minden ilyen bizonylaton látszik, honnan jött, és mi lett belőle a többi programban.
+  Az automatikus műveleteket a belépni nem tudó „Integrációs központ (automatikus)” gépi felhasználó végzi,
+  és az audit naplóba kerülnek.
+- **A közös eseményformátum:** `packages/esemenyek` egy változatlan másolat az AWEBOLDAL repóból
+  (`FORRAS.json`), a teszt jelzi, ha valaki helyben átírná. Frissítés: az AWEBOLDAL-ban
+  `npm run masol -w @aweboldal/esemenyek -- ../k-nyvel-app/konyvelo/packages/esemenyek`.
+
 ## Éles futtatás (egyszerű)
 
 ```bash

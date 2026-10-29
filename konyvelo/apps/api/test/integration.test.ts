@@ -548,6 +548,30 @@ describe("bevezető hónap, termékek, partnerek, ismeretlen esemény", () => {
     expect(await deliver(keszletEvent("torzs.partner.valtozott", 1, "partner", "X3", { partner: { name: "Ajtó", taxNumber: supplier.taxNumber }, anonymized: true }))).toMatchObject({ outcome: "TODO" });
   });
 
+  it("termékkérdés (KK3): a piszkozat termékei a Készlet termékei közül; eltérő áfakulcs csak megerősítéssel; a termékek az eseménnyel mennek", async () => {
+    const draft = (await admin.post(`${c()}/documents`, {
+      docType: "SZSZ", partnerId: supplier.id, externalNumber: "KK3-1", description: "Kilincsek", issueDate: "2026-11-21", fulfillmentDate: "2026-11-21", accountingDate: "2026-11-21",
+      lines: [{ accountId: acc["261"], side: "D", amount: 20_000_00 }, { accountId: acc["466"], side: "D", amount: 5_400_00 }, { accountId: acc["454"], side: "C", amount: 25_400_00 }],
+    })).json() as DocumentDto;
+    const url = `${c()}/documents/${draft.id}/integration/stock-lines`;
+    const line = { productId: "P9", quantity: 4, netAmount: 20_000_00, vatRate: 18, vatAmount: 3_600_00 };
+    const r1 = await admin.put(url, { lines: [line] });
+    expect(r1.statusCode, r1.body).toBe(422);
+    expect(r1.json().error.fields["lines.0.vatRate"]).toMatch(/eltér/);
+    const r2 = await admin.put(url, { lines: [{ ...line, vatRate: 27, vatAmount: 5_400_00 }] });
+    expect(r2.statusCode, r2.body).toBe(200);
+    await ownerQuery("DELETE FROM integration_outbox");
+    expect((await admin.post(`${c()}/documents/${draft.id}/post`)).statusCode).toBe(200);
+    const [posted] = await outbox();
+    expect(posted!.payload.stockLines).toEqual([{ productId: "P9", productName: "Kilincs", quantity: 4, unit: "db", netAmount: 20_000_00, vatRate: 27, vatAmount: 5_400_00 }]);
+    // Termék nélkül könyvelt számla: tájékoztató Teendő (a Készletben kézzel kell rögzíteni).
+    const plain = await admin.post(`${c()}/documents`, {
+      docType: "SZSZ", partnerId: supplier.id, externalNumber: "KK3-2", description: "Más", issueDate: "2026-11-21", fulfillmentDate: "2026-11-21", accountingDate: "2026-11-21", post: true,
+      lines: [{ accountId: acc["529"], side: "D", amount: 1000 }, { accountId: acc["454"], side: "C", amount: 1000 }],
+    });
+    expect((await todos()).find((t) => t.documentId === plain.json().id)?.title).toMatch(/nem adott meg terméket/);
+  });
+
   it("ismeretlen eseményverzió: Teendő, nem csendes elutasítás", async () => {
     const old = keszletEvent("keszlet.eladas.veglegesitve", 1, "eladas", "V1", { saleId: "V1", date: "2026-11-02", customer: null, cash: true, costOfGoods: 1, lines: [{ productId: "P", quantity: 1, unitPrice: 1, vatRate: 27 }] });
     expect(await deliver(old)).toMatchObject({ outcome: "TODO", todo: { key: "nem-tamogatott:keszlet.eladas.veglegesitve@1" } });

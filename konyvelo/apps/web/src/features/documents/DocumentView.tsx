@@ -14,6 +14,7 @@ import { Field } from "../../ui/Field";
 import { PageHeader } from "../../ui/Page";
 import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
+import { DocumentIntegrationPanel } from "../integration/IntegrationPages";
 import { AttachmentsSection } from "./AttachmentsSection";
 import { StatusBadge } from "./StatusBadge";
 import { deadlineText, useInvalidateDocuments } from "./queries";
@@ -200,6 +201,7 @@ export function DocumentView({ doc }: { doc: DocumentDto }) {
         </section>
       </div>
 
+      <DocumentIntegrationPanel documentId={doc.id} posted={posted} />
       <AttachmentsSection documentId={doc.id} posted={posted} />
 
       {doc.settlements.length > 0 && (

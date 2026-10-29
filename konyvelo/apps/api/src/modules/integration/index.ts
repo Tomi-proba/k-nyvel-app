@@ -1,5 +1,5 @@
 import { createHash, randomInt } from "node:crypto";
-import { and, asc, desc, eq, gt, isNull, lte, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { addDays, todayIso } from "@konyvelo/domain";
 import { createHubClient, INBOUND_PATH, LINK_PATH, MODULE_LABELS, registryOf, validateEvent, verifyHubRequest, type InboundResult, type Module } from "@konyvelo/esemenyek";
 import {
@@ -19,7 +19,6 @@ import { AppError, assertUuid, conflict, notFound, parseBody, validationError } 
 import type { AppModule } from "../../core/modules";
 import {
   companies,
-  fiscalYears,
   documents,
   documentStockLines,
   integrationInbox,
@@ -410,10 +409,71 @@ export const integrationModule: AppModule = {
       return { id };
     });
 
+    /** A rögzített bizonylat termék-sorai (KK3): csak piszkozaton, a Készlet termékei közül. */
+    app.put<PD>(`${docBase}/stock-lines`, async (request) => {
+      const { companyId, documentId } = request.params;
+      const { user } = await requireCompanyPermission(db, request, companyId, "ledger:post");
+      const input = parseBody(stockLinesSchema, request.body);
+      assertUuid(documentId, "A bizonylat nem található.");
+      await db.transaction(async (tx) => {
+        const [d] = await tx.select().from(documents).where(and(eq(documents.companyId, companyId), eq(documents.id, documentId))).for("update");
+        if (!d) throw notFound("A bizonylat nem található.");
+        if (d.status !== "DRAFT") throw conflict("Könyvelt bizonylat termékei nem módosíthatók.");
+        if (!["SZSZ", "VSZ", "HELY"].includes(d.docType)) throw conflict("Terméket csak szállítói, vevő- és helyesbítő számlához lehet megadni.");
+        const ids = [...new Set(input.lines.map((l) => l.productId))];
+        const products = new Map(
+          (ids.length ? await tx.select().from(integrationProducts).where(and(eq(integrationProducts.companyId, companyId), inArray(integrationProducts.productId, ids))) : []).map((p) => [p.productId, p]),
+        );
+        const errors: Record<string, string> = {};
+        input.lines.forEach((l, i) => {
+          const p = products.get(l.productId);
+          if (!p) errors[`lines.${i}.productId`] = "A termék nem található a Készlet termékei között.";
+          // Az eltérő áfakulcsot nem feltételezzük a termékéből, de nem is fogadjuk el kérdés nélkül (F5).
+          else if (p.vatRate !== null && l.vatRate !== null && Number(p.vatRate) !== l.vatRate && !l.confirmVatDifference) {
+            errors[`lines.${i}.vatRate`] = `Az áfakulcs (${l.vatRate}%) eltér a terméknél megadottól (${Number(p.vatRate)}%). Erősítse meg, ha szándékos.`;
+          }
+        });
+        if (Object.keys(errors).length) throw validationError(errors);
+        await tx.delete(documentStockLines).where(eq(documentStockLines.documentId, documentId));
+        if (input.lines.length) {
+          await tx.insert(documentStockLines).values(
+            input.lines.map((l, i) => {
+              const p = products.get(l.productId)!;
+              return { documentId, lineNo: i + 1, productId: p.productId, productName: p.name, quantity: l.quantity, unit: p.unit, netAmount: l.netAmount, vatRate: l.vatRate, vatAmount: l.vatAmount };
+            }),
+          );
+        }
+        await writeAudit(tx, {
+          companyId,
+          userId: user.id,
+          action: "document.stock_lines",
+          entityType: "document",
+          entityId: documentId,
+          after: { lines: input.lines.map((l) => ({ productId: l.productId, quantity: l.quantity, netAmount: l.netAmount })) },
+          ip: request.ip,
+        });
+      });
+      return { ok: true };
+    });
+
     await approvalsRoutes(app, db);
   },
 };
 
 const choiceSchema = z.object({ choice: z.enum(["RECEIVED", "INVOICE"], { error: "Válassza ki a dátumot." }) });
+const stockLinesSchema = z.object({
+  lines: z
+    .array(
+      z.object({
+        productId: z.string().min(1, "Válasszon terméket."),
+        quantity: z.number({ error: "Adja meg a mennyiséget." }).positive("A mennyiség legyen pozitív."),
+        netAmount: z.number().int("Az összeg egész fillér legyen."),
+        vatRate: z.number().min(0).max(100).nullable(),
+        vatAmount: z.number().int("Az összeg egész fillér legyen."),
+        confirmVatDifference: z.boolean().optional(),
+      }),
+    )
+    .max(200),
+});
 const reverseDateSchema = z.object({ accountingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Érvénytelen dátum.").optional() });
 

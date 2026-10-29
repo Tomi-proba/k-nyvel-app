@@ -123,6 +123,14 @@ export const GLOSSARY = {
     title: "Rögzítési határidő",
     text: "Pénztári tételt a pénzmozgással egyidejűleg, banki tételt a kivonat megérkezésekor (a rendszer legkésőbb a tárgyhót követő hó 15-ét figyeli), egyéb bizonylatot legkésőbb a tárgynegyedévet követő hó végéig kell könyvelni (Szt. 165. § (3)).",
   },
+  integracioKod: {
+    title: "Kapcsolódási kód (integráció)",
+    text: "Egyszer használható, 24 óra múlva lejáró kód, amelyet itt, a Könyvelőben készít a cég kezelője. A cég összekapcsolásához a közös felületen (vagy az üzemeltetőnél) kell megadni. A cég adószáma önmagában soha nem elég az összekapcsoláshoz.",
+  },
+  integracio: {
+    title: "Integráció",
+    text: "A cég többi programja (Készletfigyelő, eÁFA) az integrációs központon keresztül értesíti egymást, pl. a Készletben véglegesített beszerzésből itt szállítói számla piszkozata lesz. Minden automatikus tétel mutatja, honnan jött; ami nem egyértelmű, abból piszkozat és Teendő lesz, és az ELÁBÉ-t mindig ember hagyja jóvá.",
+  },
   csatolmany: {
     title: "Csatolmány",
     text: "A bizonylat eredetijének beszkennelt vagy lefényképezett másolata (PDF, JPEG vagy PNG). Minden fájl SHA-256 lenyomatot kap, amely a bizonylat könyvelési lenyomatába is beleszámít, így egy utólagos csere kimutatható. Könyvelt bizonylat csatolmánya nem törölhető (Szt. 169. §), de újabb feltölthető mellé.",

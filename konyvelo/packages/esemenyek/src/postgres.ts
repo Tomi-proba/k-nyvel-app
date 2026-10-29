@@ -106,7 +106,8 @@ export async function relayOutbox(pool: pg.Pool, publish: (events: EventEnvelope
 /**
  * Egy beérkezett esemény végrehajtása pontosan egyszer. Az `apply` a hatást a kapott kliensen
  * (ugyanabban a tranzakcióban) végzi; ha hibát dob, semmi nem marad meg, és a központ később újra
- * próbálja. Ha az esemény már hatott, az akkori eredményt adja vissza `DUPLICATE` jelöléssel.
+ * próbálja. Ha az esemény már hatott, az akkori eredményt adja vissza `DUPLICATE` jelöléssel. A
+ * `PARKED` (félretett) eredménynél semmi nem marad meg: a központ később újraküldi, és akkor újra fut.
  */
 export async function applyOnce(
   pool: pg.Pool,
@@ -128,6 +129,11 @@ export async function applyOnce(
       return { ...(prev.rows[0]?.result ?? {}), outcome: "DUPLICATE" };
     }
     const result = await apply(client, delivery);
+    // A félretett esemény még nem hatott: nem rögzítjük, hogy a központ újraküldésekor újra feldolgozható legyen.
+    if (result.outcome === "PARKED") {
+      await client.query("ROLLBACK");
+      return result;
+    }
     await client.query("UPDATE integration_inbox SET outcome = $2, result = $3 WHERE event_id = $1", [delivery.event.id, result.outcome, JSON.stringify(result)]);
     await client.query("COMMIT");
     return result;

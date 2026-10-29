@@ -64,6 +64,26 @@ export const GUIDE: GuideTopic[] = [
     ],
   },
   {
+    id: "integracio",
+    title: "A Készletből érkező tételek jóváhagyása",
+    intro: "Ha a cég Készletfigyelője össze van kötve a Könyvelővel, a Készletben véglegesített beszerzésekből és eladásokból itt piszkozat lesz. Ezeket Önnek kell jóváhagynia.",
+    steps: [
+      "Első alkalommal: Beállítások → Integráció → „Kapcsolódási kód készítése”. A kódot adja meg a közös felületen (vagy az üzemeltetőnek). Az adószám önmagában nem elég.",
+      "Ugyanitt ellenőrizze a számla-hozzárendelést (pl. Áruk: 261, ELÁBÉ: 814). A program az alapértelmezett számlatükörből előre kitölti.",
+      "Ha tételek érkeztek, a Kezdőlapon megjelenik: „… tétel érkezett a Készletből jóváhagyásra”. Kattintson rá.",
+      "A tételek napra és fajtára (beszerzés, ELÁBÉ, sztornó) csoportosítva látszanak. A hiányos tételnél az ok is ott van; a nevére kattintva javíthatja.",
+      "Jelölje ki a hiánytalan tételeket (egyenként, vagy a csoport összes hiánytalan tételét egyszerre).",
+      "Ha a beszerzésnél a bevételezés és a számla dátuma eltér, válassza ki, melyik legyen a könyvelés dátuma.",
+      "Kattintson „A kijelölt … tétel könyvelése” gombra, nézze át az összesítést, majd „Könyvelés”.",
+    ],
+    tips: [
+      "Az első hónapban minden beérkező tétel piszkozat („csak piszkozat” mód). Utána a program emlékeztet, de magától nem kapcsol át.",
+      "Az ELÁBÉ mindig az Ön jóváhagyásával könyvelődik, akkor is, ha automatikus módra kapcsol.",
+      "Minden ilyen bizonylaton látszik, honnan jött („Kapcsolat a többi programmal”).",
+    ],
+    link: { to: "/konyveles/jovahagyas", label: "Jóváhagyás megnyitása" },
+  },
+  {
     id: "vevoszamla",
     title: "Vevőszámla rögzítése (amit a cég kiállított)",
     intro: "Ugyanúgy megy, mint a szállítói számla, csak a típus és a partner más.",

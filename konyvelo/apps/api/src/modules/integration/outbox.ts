@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { registryOf, validateEvent, type EventEnvelope } from "@konyvelo/esemenyek";
 import type { Executor, Tx } from "../../core/db";
-import { accounts, documents, documentStockLines, integrationOutbox, integrationRecords, integrationSettings, journalLines, partners, settlements } from "../../core/schema";
+import { accounts, documents, documentStockLines, integrationOutbox, integrationProducts, integrationRecords, integrationSettings, journalLines, partners, settlements } from "../../core/schema";
+import { openTodo } from "./todos";
 
 /**
  * Kimenő események (TERV.md F14.1). Mindig a művelet SAJÁT tranzakciójában: ha a művelet
@@ -142,6 +143,24 @@ export async function emitDocumentPosted(tx: Tx, doc: Doc): Promise<void> {
           }
         : {}),
     },
+  });
+  await stockQuestionSkipped(tx, doc, stock.length);
+}
+
+/**
+ * KK3: ha a cégnek van Készlete (ismert termékei), de a vevő- vagy szállítói számlához nem adtak meg
+ * terméket, a Készlet nem tudja a mozgást magától rögzíteni: erről Teendő szól (tájékoztató).
+ */
+async function stockQuestionSkipped(tx: Tx, doc: Doc, stockCount: number) {
+  if (stockCount > 0 || (doc.docType !== "SZSZ" && doc.docType !== "VSZ")) return;
+  if (await originEventOf(tx, doc.id)) return;
+  const [p] = await tx.select({ n: sql<number>`count(*)::int` }).from(integrationProducts).where(eq(integrationProducts.companyId, doc.companyId));
+  if (!p?.n) return;
+  await openTodo(tx, doc.companyId, {
+    key: `termek:${doc.id}`,
+    kind: "MISSING_DATA",
+    title: `A(z) ${doc.serialNumber} bizonylathoz nem adott meg terméket; a Készletben a mozgást kézzel kell rögzíteni (ott is kérdés lesz).`,
+    documentId: doc.id,
   });
 }
 

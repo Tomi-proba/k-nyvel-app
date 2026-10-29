@@ -9,6 +9,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
 
+/** Az e2e szerver központ-titka (e2e/start-server.ts): a teszt a központ nevében ír alá. */
+const E2E_HUB_SECRET = "e2e-kozpont-titok-0123456789abcdefghijklmnop";
+
 const ADMIN = { name: "Admin Anna", email: "admin@example.hu", password: "nagyon-titkos-jelszo-123" };
 
 async function expectAccessible(page: Page, label: string) {
@@ -671,6 +674,71 @@ test("NAV-import: összekapcsolás kóddal, lekérdezés, javaslat, jóváhagyá
   await expect(page.getByRole("heading", { level: 1, name: /^SZSZ-2026-/ })).toBeVisible();
 });
 
+test("integráció: összekapcsolás kóddal, beérkező tételek, csoportos jóváhagyás, forrásjelölés", async ({ page, request }) => {
+  const { signedHeaders, INBOUND_PATH, LINK_PATH } = await import("../packages/esemenyek/src/index.ts");
+  const { randomUUID } = await import("node:crypto");
+  const signed = (path: string, body: unknown) => {
+    const text = JSON.stringify(body);
+    return request.post(path, { data: text, headers: { "content-type": "application/json", ...signedHeaders(E2E_HUB_SECRET, "kozpont", "POST", path, text) } });
+  };
+  await login(page);
+  await page.getByRole("link", { name: "Beállítások" }).first().click();
+  await page.getByRole("navigation", { name: "Beállítások" }).getByRole("link", { name: "Integráció" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Integráció" })).toBeVisible();
+  await expectAccessible(page, "Integráció – összekapcsolás előtt");
+  await page.getByRole("button", { name: "Kapcsolódási kód készítése" }).click();
+  const code = (await page.locator(".alert-success strong.mono").textContent())!;
+  const companyId = await page.evaluate(async () => (await (await fetch("/api/auth/me")).json()).companies[0].id as string);
+  const linked = await signed(LINK_PATH, { code, taxNumber: "10773381-2-44" });
+  expect(linked.status(), await linked.text()).toBe(200);
+  await page.reload();
+  await expect(page.getByText("Összekapcsolva")).toBeVisible();
+  await expectAccessible(page, "Integráció – beállítások");
+
+  const ev = (type: string, recordType: string, id: string, payload: Record<string, unknown>) => ({
+    id: randomUUID(), type, version: 2, occurredAt: new Date().toISOString(), payload,
+    source: { module: "keszlet", companyRef: "keszlet-1", recordType, recordId: id, sequence: 1, label: `Készlet ${recordType} ${id}` },
+  });
+  const line = { productId: "P1", productName: "Bejárati ajtó", quantity: 1, unit: "db", netAmount: 100_000_00, vatRate: 27, vatAmount: 27_000_00 };
+  for (const id of ["E2E-B1", "E2E-B2"]) {
+    const r = await signed(INBOUND_PATH, {
+      targetCompanyRef: companyId,
+      event: ev("keszlet.beszerzes.veglegesitve", "beszerzes", id, {
+        purchaseId: id, receivedDate: "2026-11-05", invoiceDate: "2026-11-05", fulfillmentDate: "2026-11-05", invoiceNumber: `IR-${id}`,
+        supplier: { name: "Irodaszer Kft.", taxNumber: "10537914-4-44" }, lines: [line], totals: { net: 100_000_00, vat: 27_000_00, gross: 127_000_00 },
+      }),
+    });
+    expect(r.status(), await r.text()).toBe(200);
+  }
+  const sale = await signed(INBOUND_PATH, {
+    targetCompanyRef: companyId,
+    event: ev("keszlet.eladas.veglegesitve", "eladas", "E2E-E1", {
+      saleId: "E2E-E1", date: "2026-11-05", customer: null, cash: true, invoiceNumber: null, costOfGoods: 60_000_00, lines: [line], totals: { net: 100_000_00, vat: 27_000_00, gross: 127_000_00 },
+    }),
+  });
+  expect(sale.status(), await sale.text()).toBe(200);
+
+  await page.goto("/");
+  await page.getByRole("link", { name: /3 tétel érkezett a Készletből jóváhagyásra/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: /Jóváhagyás/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Beszerzés – 2026\.11\.05\./ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /ELÁBÉ – 2026\.11\.05\./ })).toBeVisible();
+  await expectAccessible(page, "Csoportos jóváhagyás");
+  const purchases = page.getByRole("region", { name: /Beszerzés – / });
+  await purchases.getByLabel("A csoport összes hiánytalan tételének kijelölése").check();
+  await page.getByRole("region", { name: /ELÁBÉ – / }).getByRole("checkbox", { name: /Kijelölés:/ }).check();
+  await page.getByRole("button", { name: "A kijelölt 3 tétel könyvelése" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "3 tétel könyvelése" });
+  await expect(dialog.getByRole("cell", { name: "814" })).toBeVisible();
+  await expectAccessible(page, "Csoportos jóváhagyás – megerősítés");
+  await dialog.getByRole("button", { name: "Könyvelés" }).click();
+  await expect(page.getByText("3 tétel könyvelve.")).toBeVisible();
+  await expect(page.getByText("Nincs jóváhagyásra váró tétel.")).toBeVisible();
+  await page.getByRole("region", { name: "Az utolsó jóváhagyás eredménye" }).getByRole("link", { name: /^SZSZ-2026-/ }).first().click();
+  await expect(page.getByText(/Honnan jött: a\(z\) Készletfigyelő/)).toBeVisible();
+  await expectAccessible(page, "Bizonylat forrásjelöléssel");
+});
+
 test("csatolmány: feltöltés, álcázott fájl elutasítása, előnézet az oldalon, sértetlenség", async ({ page }) => {
   await login(page);
   await page.goto("/konyveles?status=POSTED");
@@ -711,7 +779,7 @@ test("súgó: tartalomjegyzék, lépésenkénti leírások, akadálymentesen", a
   await page.getByRole("link", { name: "Súgó" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Súgó" })).toBeVisible();
   const toc = page.getByRole("navigation", { name: "Tartalom" });
-  await expect(toc.getByRole("link")).toHaveCount(13);
+  await expect(toc.getByRole("link")).toHaveCount(14);
   await toc.getByRole("link", { name: "Szállítói számla rögzítése (amit a cég kapott)" }).click();
   const topic = page.getByRole("region", { name: "Szállítói számla rögzítése (amit a cég kapott)" });
   await expect(topic.getByRole("listitem")).toHaveCount(7);

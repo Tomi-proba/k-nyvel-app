@@ -22,6 +22,7 @@ import { AuditLogPage } from "./features/settings/AuditLogPage";
 import { FiscalYearsPage } from "./features/settings/FiscalYearsPage";
 import { MembersPage } from "./features/settings/MembersPage";
 import { TemplatesPage } from "./features/settings/TemplatesPage";
+import { ApprovalsPage, IntegrationSettingsPage } from "./features/integration/IntegrationPages";
 import { CompanySettingsPage, NewCompanyPage, PasswordPage, SettingsLayout } from "./features/settings/SettingsPages";
 import { ApiError, get } from "./lib/api";
 import { Loading, PageHeader } from "./ui/Page";
@@ -92,6 +93,7 @@ function Root() {
           <Route path={NEW_ENTRY_PATH.slice(1)} element={<NewDocumentPage />} />
           <Route path="konyveles/penzeszkozok" element={<MoneyPage />} />
           <Route path="konyveles/nav-import" element={<NavImportPage />} />
+          <Route path="konyveles/jovahagyas" element={<ApprovalsPage />} />
           <Route path="konyveles/nav-import/:invoiceId" element={<NavInvoicePage />} />
           <Route path="konyveles/:documentId" element={<DocumentPage />} />
           <Route path="partnerek" element={<PartnersPage />} />
@@ -114,6 +116,7 @@ function Root() {
             <Route path="szamlatukor" element={<ChartOfAccountsPage />} />
             <Route path="sablonok" element={<TemplatesPage />} />
             <Route path="nav-kapcsolat" element={<NavConnectionPage />} />
+            <Route path="integracio" element={<IntegrationSettingsPage />} />
             <Route path="mentes" element={<BackupExportPage />} />
             <Route path="felhasznalok" element={<MembersPage />} />
             <Route path="naplo" element={<AuditLogPage />} />
