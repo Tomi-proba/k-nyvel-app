@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { IntegrationTodoDto } from "./integration";
 import {
   AMOUNT_BASE_LABELS,
   DOCUMENT_TYPES,
@@ -312,6 +313,8 @@ export type TodosDto = {
   unappliedPayments: number;
   /** Pénztár: az elmúlt 30 nap napjai, amikor a záróegyenleg meghaladta a maximumot. */
   cashOverLimit: Array<{ accountId: string; accountNumber: string; date: string; closing: number; limit: number }>;
+  /** Integráció (I2): a nyitott integrációs Teendők és a jóváhagyásra váró tételek száma; null, ha a cég nincs összekapcsolva. */
+  integration: { todos: IntegrationTodoDto[]; approvals: number } | null;
 };
 
 // ---------- Kontírozási sablonok ----------

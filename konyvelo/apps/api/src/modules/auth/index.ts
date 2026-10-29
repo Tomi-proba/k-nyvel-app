@@ -24,7 +24,8 @@ export const authModule: AppModule = {
   register(app, { db, config }) {
     /** Első indítás: van-e már felhasználó? */
     app.get("/api/setup/status", async () => {
-      const [row] = await db.select({ n: count() }).from(users);
+      // A gépi felhasználó (integráció) nem számít: első indításkor csak ő van.
+      const [row] = await db.select({ n: count() }).from(users).where(eq(users.isSystem, false));
       return { needsSetup: (row?.n ?? 0) === 0 };
     });
 
@@ -35,7 +36,7 @@ export const authModule: AppModule = {
       const user = await db.transaction(async (tx) => {
         // Zár, hogy két egyidejű kérés ne hozhasson létre két első felhasználót.
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('setup', 0))`);
-        const [row] = await tx.select({ n: count() }).from(users);
+        const [row] = await tx.select({ n: count() }).from(users).where(eq(users.isSystem, false));
         if ((row?.n ?? 0) > 0) throw conflict("A rendszer már be van állítva. Kérjük, jelentkezzen be.");
         const [created] = await tx
           .insert(users)

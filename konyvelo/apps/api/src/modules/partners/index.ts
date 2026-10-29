@@ -7,6 +7,7 @@ import { pgConstraint, pgErrorCode, PG_FOREIGN_KEY_VIOLATION, PG_UNIQUE_VIOLATIO
 import { assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
 import type { AppModule } from "../../core/modules";
 import { accounts, partners } from "../../core/schema";
+import { emitPartnerChanged } from "../integration/outbox";
 
 type PartnerRow = typeof partners.$inferSelect;
 
@@ -142,6 +143,7 @@ export const partnersModule: AppModule = {
             after: auditable(created!),
             ip: request.ip,
           });
+          await emitPartnerChanged(tx, created!);
           return created!;
         })
         .catch(mapDbError);
@@ -185,6 +187,9 @@ export const partnersModule: AppModule = {
               ip: request.ip,
             });
           }
+          // A többi modulnak csak a közös adatok változása számít (név, adószám, cím, állapot).
+          const shared = ["name", "taxNumber", "postalCode", "city", "addressLine", "status"] as const;
+          if (shared.some((k) => before![k] !== after![k])) await emitPartnerChanged(tx, after!);
           return after!;
         })
         .catch(mapDbError);

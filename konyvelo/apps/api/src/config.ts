@@ -29,6 +29,13 @@ export type Config = {
   fileStore: FileStoreConfig;
   /** Egy csatolmány legnagyobb mérete bájtban. */
   attachmentMaxBytes: number;
+  /**
+   * Az integrációs központ (I2, TERV.md F14). Ha nincs megadva, nincs integráció: a Könyvelő önállóan,
+   * pontosan úgy működik, mint eddig.
+   */
+  hub: { url: string; secret: string } | null;
+  /** A többi modul felületének címe a forrásra mutató linkekhez (a közös felület elkészültéig). */
+  moduleUrls: { keszlet: string | null; eafa: string | null };
 };
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -55,11 +62,23 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     eafaGateway: gatewayConfig(env),
     fileStore: fileStoreConfig(env),
     attachmentMaxBytes: Math.round(Number(env.CSATOLMANY_MAX_MB ?? 10) * 1024 * 1024),
+    hub: hubConfig(env),
+    moduleUrls: { keszlet: env.KESZLET_URL?.trim().replace(/\/$/, "") || null, eafa: env.EAFA_URL?.trim().replace(/\/$/, "") || null },
     allowedOrigins: (env.ALLOWED_ORIGINS ?? "")
       .split(",")
       .map((s) => s.trim().replace(/\/$/, ""))
       .filter(Boolean),
   };
+}
+
+/** A központ címe és a Könyvelő titka (a központban KOZPONT_KONYVELO_TITOK), legalább 32 karakter. */
+function hubConfig(env: NodeJS.ProcessEnv): Config["hub"] {
+  const url = env.KOZPONT_URL?.trim().replace(/\/$/, "");
+  const secret = env.KOZPONT_TITOK?.trim();
+  if (!url && !secret) return null;
+  if (!url || !secret) throw new Error("Az integrációhoz a KOZPONT_URL és a KOZPONT_TITOK is kell (lásd .env.example).");
+  if (secret.length < 32) throw new Error("A KOZPONT_TITOK legalább 32 karakter legyen (ugyanaz, mint a központban a KOZPONT_KONYVELO_TITOK).");
+  return { url, secret };
 }
 
 /** A közös titok legalább 32 karakter, ugyanaz, mint az eÁFA-ban (EAFA_KONYVELO_ATJARO_TITOK). */

@@ -23,6 +23,7 @@ import { subledgerModule } from "./modules/subledger";
 import { templatesModule } from "./modules/templates";
 import { attachmentsModule } from "./modules/attachments";
 import { navModule } from "./modules/nav";
+import { integrationModule } from "./modules/integration";
 import { exportModule } from "./modules/export";
 
 /** A bekapcsolt modulok. Új modul felvétele: ide kell beírni. */
@@ -39,6 +40,7 @@ export const MODULES: AppModule[] = [
   closingModule,
   attachmentsModule,
   navModule,
+  integrationModule,
   exportModule,
   auditModule,
 ];
@@ -67,6 +69,11 @@ export async function buildApp(config: Config, db: Db, files: FileStore = create
 
   app.addHook("onRequest", async (request, reply) => {
     if (!request.url.startsWith("/api/")) return;
+    // A központ felőli végpontokat aláírás védi (munkamenet és CSRF-fejléc nélkül), lásd modules/integration.
+    if (request.url.startsWith("/api/integracio/")) {
+      reply.header("Cache-Control", "no-store");
+      return;
+    }
 
     // Biztonsági fejlécek.
     reply.header("Cache-Control", "no-store");

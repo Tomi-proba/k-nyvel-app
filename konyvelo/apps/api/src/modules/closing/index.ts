@@ -11,6 +11,7 @@ import { companies, documents, fiscalYears, partners, periods } from "../../core
 import { listAccounts } from "../accounts";
 import { createSystemDocument, reverseDocument } from "../documents";
 import { reconciliation } from "../subledger";
+import { emitPeriodChanged } from "../integration/outbox";
 
 const reasonSchema = z.object({
   reason: z.string({ error: "Az indoklás kötelező." }).trim().min(5, "Írja le röviden az indoklást (legalább 5 karakter).").max(500, "Legfeljebb 500 karakter."),
@@ -147,6 +148,7 @@ async function setPeriodStatus(tx: Tx, companyId: string, user: AuthUser, ip: st
     .update(periods)
     .set({ status, closedAt: status === "CLOSED" ? new Date() : null, closedBy: status === "CLOSED" ? user.id : null })
     .where(eq(periods.id, p.id));
+  await emitPeriodChanged(tx, companyId, { id: p.id, kind: "PERIOD", startDate: p.startDate, endDate: p.endDate, closed: status === "CLOSED" });
   await writeAudit(tx, {
     companyId,
     userId: user.id,
@@ -254,6 +256,7 @@ export const closingModule: AppModule = {
             .update(fiscalYears)
             .set({ status: "CLOSED", closedAt: new Date(), closedBy: user.id, retentionUntil: retentionUntil(fy.endDate) })
             .where(eq(fiscalYears.id, fy.id));
+          await emitPeriodChanged(tx, companyId, { id: fy.id, kind: "FISCAL_YEAR", startDate: fy.startDate, endDate: fy.endDate, closed: true });
           // Nyitás: az előző évi eredmény a 419-ről a 413 Eredménytartalékba (Szt. 37. § (2) a)).
           let nyit = null;
           if (preview.result !== 0) {
@@ -303,6 +306,7 @@ export const closingModule: AppModule = {
             await reverseDocument(tx, companyId, d.id, user, request.ip, { accountingDate: fy.endDate, reason: `Év újranyitása: ${reason}` });
           }
           await tx.update(fiscalYears).set({ status: "OPEN" }).where(eq(fiscalYears.id, fy.id));
+          await emitPeriodChanged(tx, companyId, { id: fy.id, kind: "FISCAL_YEAR", startDate: fy.startDate, endDate: fy.endDate, closed: false });
           await writeAudit(tx, { companyId, userId: user.id, action: "fiscal_year.reopen", entityType: "fiscal_year", entityId: fy.id, after: { reason }, ip: request.ip });
         })
         .catch(mapDbError);

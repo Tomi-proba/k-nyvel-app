@@ -7,3 +7,4 @@ export * from "./documents";
 export * from "./reports";
 export * from "./nav";
 export * from "./export-archive";
+export * from "./integration";

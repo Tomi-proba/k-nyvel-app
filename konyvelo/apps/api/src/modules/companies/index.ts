@@ -215,10 +215,12 @@ export const companiesModule: AppModule = {
 
       await db.transaction(async (tx) => {
         let [target] = await tx
-          .select({ id: users.id, email: users.email, name: users.name })
+          .select({ id: users.id, email: users.email, name: users.name, isSystem: users.isSystem })
           .from(users)
           .where(sql`lower(${users.email}) = ${input.email}`)
           .limit(1);
+        // A gépi felhasználó (integráció) nem vehető fel cégtagnak.
+        if (target?.isSystem) throw validationError({ email: "Ez a cím a program belső, gépi felhasználójáé; nem vehető fel." });
 
         if (!target) {
           const fields: Record<string, string> = {};
@@ -228,7 +230,7 @@ export const companiesModule: AppModule = {
           [target] = await tx
             .insert(users)
             .values({ email: input.email, name: input.name!, passwordHash: passwordHash!, mustChangePassword: true, createdBy: actor.id })
-            .returning({ id: users.id, email: users.email, name: users.name });
+            .returning({ id: users.id, email: users.email, name: users.name, isSystem: users.isSystem });
           await writeAudit(tx, {
             companyId,
             userId: actor.id,

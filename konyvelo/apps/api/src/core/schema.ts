@@ -15,6 +15,8 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  /** A gépi felhasználó (integráció): belépni nem tud, cégnek nem tagja. */
+  isSystem: boolean("is_system").notNull().default(false),
   mustChangePassword: boolean("must_change_password").notNull().default(false),
   lastLoginAt: ts("last_login_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
@@ -350,3 +352,125 @@ export const attachments = pgTable("attachments", {
   prevHash: text("prev_hash"),
   chainHash: text("chain_hash"),
 });
+
+// ---------- Integráció (I2) ----------
+
+/** A gépi felhasználó azonosítója (0011_integracio.sql). */
+export const SYSTEM_USER_ID = "00000000-0000-4000-8000-00000000c0de";
+
+export type PostingMode = "DRAFT_ONLY" | "AUTO";
+export type PurchaseDateRule = "ASK" | "RECEIVED" | "INVOICE";
+
+export const integrationSettings = pgTable("integration_settings", {
+  companyId: uuid("company_id").primaryKey(),
+  linkedAt: ts("linked_at"),
+  unlinkedAt: ts("unlinked_at"),
+  postingMode: text("posting_mode").notNull().default("DRAFT_ONLY").$type<PostingMode>(),
+  draftOnlyUntil: d("draft_only_until"),
+  purchaseDateRule: text("purchase_date_rule").notNull().default("ASK").$type<PurchaseDateRule>(),
+  inventoryAccountId: uuid("inventory_account_id"),
+  cogsAccountId: uuid("cogs_account_id"),
+  payableAccountId: uuid("payable_account_id"),
+  receivableAccountId: uuid("receivable_account_id"),
+  inputVatAccountId: uuid("input_vat_account_id"),
+  outputVatAccountId: uuid("output_vat_account_id"),
+  revenueAccountId: uuid("revenue_account_id"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  updatedBy: uuid("updated_by"),
+});
+
+export const integrationLinkCodes = pgTable("integration_link_codes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  codeHash: char("code_hash", { length: 64 }).notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  usedAt: ts("used_at"),
+  revokedAt: ts("revoked_at"),
+});
+
+export const integrationOutbox = pgTable("integration_outbox", {
+  id: uuid("id").primaryKey(),
+  companyId: uuid("company_id").notNull(),
+  envelope: jsonb("envelope").notNull().$type<Record<string, unknown>>(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  sentAt: ts("sent_at"),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+});
+
+export const integrationInbox = pgTable("integration_inbox", {
+  eventId: uuid("event_id").primaryKey(),
+  companyId: uuid("company_id").notNull(),
+  eventType: text("event_type").notNull(),
+  receivedAt: ts("received_at").notNull().defaultNow(),
+  outcome: text("outcome").notNull(),
+  result: jsonb("result").notNull().$type<Record<string, unknown>>(),
+});
+
+export type IntegrationRecordKind = "PURCHASE" | "COGS" | "SALE_LINK" | "PURCHASE_LINK" | "REVERSAL";
+
+export const integrationRecords = pgTable("integration_records", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  documentId: uuid("document_id"),
+  kind: text("kind").notNull().$type<IntegrationRecordKind>(),
+  sourceModule: text("source_module").notNull(),
+  sourceRecordType: text("source_record_type").notNull(),
+  sourceRecordId: text("source_record_id").notNull(),
+  sourceUrl: text("source_url"),
+  sourceLabel: text("source_label"),
+  eventId: uuid("event_id").notNull(),
+  draftFingerprint: text("draft_fingerprint"),
+  receivedDate: d("received_date"),
+  invoiceDate: d("invoice_date"),
+  needsDateChoice: boolean("needs_date_choice").notNull().default(false),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const integrationTodos = pgTable("integration_todos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull(),
+  key: text("key").notNull(),
+  kind: text("kind").notNull(),
+  title: text("title").notNull(),
+  detail: text("detail"),
+  documentId: uuid("document_id"),
+  hubKey: text("hub_key"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  resolvedAt: ts("resolved_at"),
+  resolvedBy: uuid("resolved_by"),
+  hubResolvedAt: ts("hub_resolved_at"),
+});
+
+export const integrationProducts = pgTable(
+  "integration_products",
+  {
+    companyId: uuid("company_id").notNull(),
+    productId: text("product_id").notNull(),
+    name: text("name").notNull(),
+    sku: text("sku"),
+    unit: text("unit"),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 2, mode: "number" }),
+    active: boolean("active").notNull(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.productId] })],
+);
+
+export const documentStockLines = pgTable(
+  "document_stock_lines",
+  {
+    documentId: uuid("document_id").notNull(),
+    lineNo: smallint("line_no").notNull(),
+    productId: text("product_id").notNull(),
+    productName: text("product_name").notNull(),
+    quantity: numeric("quantity", { precision: 18, scale: 4, mode: "number" }).notNull(),
+    unit: text("unit"),
+    netAmount: bigint("net_amount", { mode: "number" }).notNull(),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 2, mode: "number" }),
+    vatAmount: bigint("vat_amount", { mode: "number" }).notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.documentId, t.lineNo] })],
+);

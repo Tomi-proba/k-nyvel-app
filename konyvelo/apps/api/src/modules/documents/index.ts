@@ -36,13 +36,17 @@ import { requireCompanyPermission, type AuthUser } from "../../core/auth";
 import { pgErrorCode, PG_RAISE, PG_UNIQUE_VIOLATION, type Executor, type Tx } from "../../core/db";
 import { assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
 import type { AppModule } from "../../core/modules";
-import { attachments, companies, documents, documentSequences, fiscalYears, journalLines, partners, periods, settlements, users } from "../../core/schema";
+import { attachments, companies, documents, SYSTEM_USER_ID, documentSequences, fiscalYears, journalLines, partners, periods, settlements, users } from "../../core/schema";
 import { cashOverLimit, firstNegativeCash, openItems } from "../subledger";
 import { listAccounts } from "../accounts";
 import { navTodos } from "../nav";
 import { attachmentHashPart, documentAttachments, draftAttachments, lockAttachmentsOnPosting } from "../attachments";
+import { emitDocumentPosted, emitDocumentReversed, emitSettlementsCreated, emitSettlementsRemoved } from "../integration/outbox";
+import { integrationTodosSummary, recordKindOf, resolveDocumentTodos } from "../integration/todos";
 
 type DocRow = typeof documents.$inferSelect;
+/** A nem kézi rögzítésű bizonylat eredete (a piszkozat szerkesztése után is megmarad). */
+export type DocumentOrigin = "NAV_IMPORT" | "INTEGRATION";
 type LineRow = typeof journalLines.$inferSelect;
 type AccountMap = Map<string, Awaited<ReturnType<typeof listAccounts>>[number]>;
 
@@ -274,7 +278,7 @@ async function saveDraft(
   user: AuthUser,
   input: DocumentParsedInput,
   existing: DocRow | null,
-  origin: "NAV_IMPORT" | null = null,
+  origin: DocumentOrigin | null = null,
 ): Promise<string> {
   const fy = await fiscalYearFor(tx, companyId, input.accountingDate);
   if (!fy) {
@@ -324,7 +328,7 @@ async function saveDraft(
     affectsFiscalYearId: corrects && corrects.fiscalYearId !== fy.id ? corrects.fiscalYearId : null,
     templateId: input.templateId ?? null,
     // A NAV-ból jött bizonylat eredete a piszkozat szerkesztése után is megmarad.
-    source: origin ?? (existing?.source === "NAV_IMPORT" ? "NAV_IMPORT" : input.templateId ? "TEMPLATE" : "MANUAL"),
+    source: origin ?? (existing?.source === "NAV_IMPORT" || existing?.source === "INTEGRATION" ? existing.source : input.templateId ? "TEMPLATE" : "MANUAL"),
     settlementPlan: input.settlements,
     updatedAt: new Date(),
   };
@@ -441,6 +445,10 @@ export async function postDocument(tx: Tx, companyId: string, docId: string, use
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"documents-post:" + companyId}, 0))`);
   const doc = await loadDoc(tx, companyId, docId, true);
   if (doc.status === "POSTED") throw conflict(`A bizonylat már könyvelve van (${doc.serialNumber}).`);
+  // Az ELÁBÉ-tétel mindig ember jóváhagyásával könyvelhető (TERV.md D9, F14.4); a gépi felhasználó soha.
+  if (user.id === SYSTEM_USER_ID && (await recordKindOf(tx, doc.id)).includes("COGS")) {
+    throw conflict("Az ELÁBÉ-tételt csak ember hagyhatja jóvá és könyvelheti.");
+  }
   const lines = await tx.select().from(journalLines).where(eq(journalLines.documentId, doc.id)).orderBy(asc(journalLines.lineNo));
   const accounts = await accountMap(tx, companyId);
 
@@ -540,7 +548,10 @@ export async function postDocument(tx: Tx, companyId: string, docId: string, use
   if (open && plan.length) {
     const itemAccount = new Map(open.items.map((i) => [i.lineId, i.accountId]));
     const pairs = allocateSettlements(plan, lines as Array<(typeof lines)[number]>, (id) => itemAccount.get(id), (id) => accounts.get(id)?.subledger);
-    if (pairs.length) await tx.insert(settlements).values(pairs.map((p) => ({ ...p, companyId, source: "ENTRY" as const, createdBy: user.id })));
+    if (pairs.length) {
+      const created = await tx.insert(settlements).values(pairs.map((p) => ({ ...p, companyId, source: "ENTRY" as const, createdBy: user.id }))).returning();
+      await emitSettlementsCreated(tx, companyId, created, doc.accountingDate);
+    }
   }
   await writeAudit(tx, {
     companyId,
@@ -551,6 +562,9 @@ export async function postDocument(tx: Tx, companyId: string, docId: string, use
     after: { serialNumber, ...auditSummary(doc, lines), contentHash },
     ip,
   });
+  // Integráció (I2): a kimenő esemény ugyanebben a tranzakcióban; a bizonylat Teendői lezárulnak.
+  await emitDocumentPosted(tx, posted!);
+  await resolveDocumentTodos(tx, companyId, doc.id, user.id);
   return posted!;
 }
 
@@ -568,6 +582,8 @@ export async function reverseDocument(
   user: AuthUser,
   ip: string,
   input: { accountingDate: string; reason: string },
+  /** Ha a sztornó egy beérkezett esemény hatására készül (visszhang tiltása). */
+  causedBy: string | null = null,
 ): Promise<string> {
     const orig = await loadDoc(tx, companyId, documentId, true);
     const [company] = await tx.select({ reversalMethod: companies.reversalMethod }).from(companies).where(eq(companies.id, companyId));
@@ -636,6 +652,9 @@ export async function reverseDocument(
         ip: ip,
       });
     }
+    await emitSettlementsRemoved(tx, companyId, removed, "REVERSAL");
+    await emitDocumentReversed(tx, orig, posted, causedBy);
+    await resolveDocumentTodos(tx, companyId, orig.id, user.id);
     await writeAudit(tx, {
       companyId,
       userId: user.id,
@@ -699,7 +718,7 @@ export async function createDocument(
   user: AuthUser,
   ip: string,
   input: DocumentParsedInput,
-  origin: "NAV_IMPORT" | null = null,
+  origin: DocumentOrigin | null = null,
 ): Promise<string> {
   const newId = await saveDraft(tx, companyId, user, input, null, origin);
   const doc = await loadDoc(tx, companyId, newId);
@@ -718,6 +737,31 @@ export async function createDocument(
 }
 
 export { mapDbError as mapDocumentDbError };
+
+/**
+ * Piszkozat törlése (a csatolmányaival együtt). A tárolt fájlok kulcsait adja vissza: azokat a hívó a
+ * tranzakció sikere után törli a fájltárolóból.
+ */
+export async function deleteDraftDocument(tx: Tx, companyId: string, documentId: string, user: AuthUser, ip: string, reason?: string): Promise<Array<{ key: string; fileName: string }>> {
+  const doc = await loadDoc(tx, companyId, documentId, true);
+  if (doc.status === "POSTED") throw conflict("Könyvelt bizonylat nem törölhető. Javítani sztornóval vagy helyesbítő bizonylattal lehet.");
+  const lines = await tx.select().from(journalLines).where(eq(journalLines.documentId, doc.id));
+  const atts = await tx.delete(attachments).where(eq(attachments.documentId, doc.id)).returning({ key: attachments.storageKey, fileName: attachments.fileName });
+  await resolveDocumentTodos(tx, companyId, doc.id, user.id);
+  await tx.delete(journalLines).where(eq(journalLines.documentId, doc.id));
+  await tx.delete(documents).where(eq(documents.id, doc.id));
+  await writeAudit(tx, {
+    companyId,
+    userId: user.id,
+    action: "document.delete",
+    entityType: "document",
+    entityId: doc.id,
+    before: { ...auditSummary(doc, lines), ...(atts.length ? { attachments: atts.map((a) => a.fileName) } : {}) },
+    ...(reason ? { after: { reason } } : {}),
+    ip,
+  });
+  return atts;
+}
 
 // ---------- Útvonalak ----------
 
@@ -816,26 +860,7 @@ export const documentsModule: AppModule = {
     app.delete<PD>(`${base}/:documentId`, async (request) => {
       const { companyId, documentId } = request.params;
       const { user } = await requireCompanyPermission(db, request, companyId, "ledger:post");
-      const removed = await db
-        .transaction(async (tx) => {
-          const doc = await loadDoc(tx, companyId, documentId, true);
-          if (doc.status === "POSTED") throw conflict("Könyvelt bizonylat nem törölhető. Javítani sztornóval vagy helyesbítő bizonylattal lehet.");
-          const lines = await tx.select().from(journalLines).where(eq(journalLines.documentId, doc.id));
-          const atts = await tx.delete(attachments).where(eq(attachments.documentId, doc.id)).returning({ key: attachments.storageKey, fileName: attachments.fileName });
-          await tx.delete(journalLines).where(eq(journalLines.documentId, doc.id));
-          await tx.delete(documents).where(eq(documents.id, doc.id));
-          await writeAudit(tx, {
-            companyId,
-            userId: user.id,
-            action: "document.delete",
-            entityType: "document",
-            entityId: doc.id,
-            before: { ...auditSummary(doc, lines), ...(atts.length ? { attachments: atts.map((a) => a.fileName) } : {}) },
-            ip: request.ip,
-          });
-          return atts;
-        })
-        .catch(mapDbError);
+      const removed = await db.transaction((tx) => deleteDraftDocument(tx, companyId, documentId, user, request.ip)).catch(mapDbError);
       // A fájlok csak a sikeres törlés után; ha ez nem sikerül, legfeljebb egy gazdátlan fájl marad.
       for (const a of removed) await files.delete(a.key).catch(() => undefined);
       return { ok: true };
@@ -880,6 +905,7 @@ export const documentsModule: AppModule = {
       };
       return {
         nav: await navTodos(db, companyId),
+        integration: await integrationTodosSummary(db, companyId),
         overdueReceivables: overdue("RECEIVABLE"),
         overduePayables: overdue("PAYABLE"),
         unappliedPayments: open.unapplied.length,

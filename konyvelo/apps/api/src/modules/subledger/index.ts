@@ -14,6 +14,7 @@ import { pgErrorCode, PG_RAISE, type Executor } from "../../core/db";
 import { assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
 import type { AppModule } from "../../core/modules";
 import { accounts, companies, settlements } from "../../core/schema";
+import { emitSettlementsCreated, emitSettlementsRemoved } from "../integration/outbox";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const FAR_FUTURE = "9999-12-31";
@@ -252,6 +253,7 @@ export const subledgerModule: AppModule = {
             .insert(settlements)
             .values({ companyId, itemLineId: item.lineId, settlingLineId: pay.lineId, amount: input.amount, source: "MANUAL", createdBy: user.id })
             .returning();
+          await emitSettlementsCreated(tx, companyId, [row!], todayIso());
           await writeAudit(tx, {
             companyId,
             userId: user.id,
@@ -279,6 +281,7 @@ export const subledgerModule: AppModule = {
           const [row] = await tx.select().from(settlements).where(and(eq(settlements.companyId, companyId), eq(settlements.id, settlementId)));
           if (!row) throw notFound("A párosítás nem található.");
           await tx.delete(settlements).where(eq(settlements.id, row.id));
+          await emitSettlementsRemoved(tx, companyId, [row], "MANUAL");
           await writeAudit(tx, {
             companyId,
             userId: user.id,
