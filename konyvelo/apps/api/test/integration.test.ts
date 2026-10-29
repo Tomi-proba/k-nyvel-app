@@ -204,9 +204,9 @@ describe("kimenő események", () => {
     for (const e of events) expect(validateEvent(e).ok, JSON.stringify(e)).toBe(true);
     expect(events.map((e) => `${e.type}@${e.version}#${e.source.sequence}`)).toEqual([
       "konyvelo.bizonylat.konyvelve@2#1",
-      "konyvelo.kiegyenlites.rogzitve@2#1",
+      "konyvelo.kiegyenlites.rogzitve@3#1",
       "konyvelo.bizonylat.konyvelve@2#1",
-      "konyvelo.kiegyenlites.bontva@1#2",
+      "konyvelo.kiegyenlites.bontva@2#2",
       "konyvelo.bizonylat.sztornozva@1#2",
     ]);
     const [posted, settled, , unpaired, reversed] = events;
@@ -216,8 +216,9 @@ describe("kimenő események", () => {
       lines: [{ accountNumber: "529", side: "D", amount: 100_000 }, { accountNumber: "466", side: "D", amount: 27_000 }, { accountNumber: "454", side: "C", amount: 127_000, partner: { name: "Ajtó Kft." } }],
     });
     expect(posted!.causedBy).toBeUndefined();
-    expect(settled!.payload).toMatchObject({ documentId: pay.json().id, settledDocumentId: invoice.id, amount: 127_000, date: "2026-11-05" });
-    expect(unpaired!.payload).toMatchObject({ reason: "REVERSAL", amount: 127_000 });
+    expect(settled!.payload).toMatchObject({ documentId: pay.json().id, settledDocumentId: invoice.id, amount: 127_000, date: "2026-11-05", itemOpenAfter: 0, settledSources: [] });
+    // Sztornó után a tétel nem nyitott (a sztornó zárja), a fogadónak nem kell számolnia.
+    expect(unpaired!.payload).toMatchObject({ reason: "REVERSAL", amount: 127_000, itemOpenAfter: 0 });
     expect(reversed!.payload).toMatchObject({ documentId: invoice.id, reversalSerialNumber: expect.stringMatching(/^SZT-/), accountingDate: "2026-11-06" });
   });
 
@@ -259,7 +260,8 @@ describe("kimenő események", () => {
       "torzs.partner.valtozott",
     ]);
     expect(events[1]!.payload).toMatchObject({ docType: "HELY", corrects: { documentId: orig.id, serialNumber: orig.serialNumber } });
-    expect(events[4]!.payload).toMatchObject({ reason: "MANUAL" });
+    expect(events[3]!.payload).toMatchObject({ amount: 50_000, itemOpenAfter: 77_000 });
+    expect(events[4]!.payload).toMatchObject({ reason: "MANUAL", itemOpenAfter: 127_000 });
     expect(events[5]!.payload).toEqual({ kind: "PERIOD", startDate: "2026-01-01", endDate: "2026-01-31" });
     expect(events[7]!.payload).toMatchObject({ partner: { name: "Ügyfél Zrt.", taxNumber: customer.taxNumber }, anonymized: false });
   });
@@ -354,6 +356,17 @@ describe("beérkező: beszerzés (KK1)", () => {
       lines: [{ accountId: acc["261"], side: "D", amount: 200_000_00 }, { accountId: acc["466"], side: "D", amount: 54_000_00 }, { accountId: acc["454"], side: "C", amount: 254_000_00 }],
     })).json() as DocumentDto;
     expect(await deliver(purchaseEvent("B2"))).toMatchObject({ outcome: "APPLIED", target: { recordId: manual.id } });
+
+    // A kiegyenlítés a Készlet-forrást és a nyitott maradékot is viszi (F15.3): a Készlet nem számol, nem találgat.
+    const payLine = manual.lines.find((l) => l.accountId === acc["454"])!.id;
+    const pay = await admin.post(`${c()}/documents`, {
+      docType: "BANK", partnerId: supplier.id, description: "Részfizetés", issueDate: "2026-11-06", accountingDate: "2026-11-06", post: true,
+      lines: [{ accountId: acc["454"], side: "D", amount: 100_000_00 }, { accountId: acc["384"], side: "C", amount: 100_000_00 }], settlements: [{ itemLineId: payLine, amount: 100_000_00 }],
+    });
+    expect(pay.statusCode, pay.body).toBe(201);
+    const settled = (await outbox()).filter((e) => e.type === "konyvelo.kiegyenlites.rogzitve").at(-1)!;
+    expect(validateEvent(settled).ok).toBe(true);
+    expect(settled).toMatchObject({ version: 3, payload: { settledDocumentId: manual.id, amount: 100_000_00, itemOpenAfter: 154_000_00, settledSources: [{ module: "keszlet", recordType: "beszerzes", recordId: "B2" }] } });
   });
 
   it("nem találgat: ismeretlen szállító, hiányzó számlaszám és eltérő dátumok esetén piszkozat + Teendő az okkal", async () => {

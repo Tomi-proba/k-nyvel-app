@@ -88,6 +88,51 @@ const withTotals = <T extends { lines: Array<{ netAmount: number; vatAmount: num
   p.lines.reduce((s, l) => s + l.netAmount, 0) === p.totals.net && p.lines.reduce((s, l) => s + l.vatAmount, 0) === p.totals.vat;
 
 /**
+ * Beszerzési tétel (v3): mint a v2, és hogy az áfája visszaigényelhető-e. Ha nem, az áfa a bekerülési érték
+ * része (a Készlet `lotUnitCost` számítása szerint), a Könyvelőben nem az előzetesen felszámított áfára megy.
+ */
+const purchaseLineV3 = z
+  .object({
+    productId: z.string().min(1),
+    productName: z.string().min(1).max(300),
+    quantity: z.number().positive(),
+    unit: z.string().max(30).nullable(),
+    netAmount: filler,
+    vatRate: z.number().min(0).max(100).nullable(),
+    vatAmount: filler,
+    vatReclaimable: z.boolean(),
+  })
+  .refine((l) => l.vatRate !== null || l.vatAmount === 0, { message: "Áfakulcs nélkül az áfa összege 0.", path: ["vatAmount"] });
+
+/**
+ * A beszerzés szállítási díja (F15.7/2). A bekerülési értékbe mindig beletartozik; hogy a szállító számláján
+ * van-e, azt a jóváhagyó mondja meg: igen (true), nem (false), nem tudja (null). A fogadó nem találgat.
+ */
+const purchaseShipping = z
+  .object({
+    netAmount: filler.positive(),
+    vatRate: z.number().min(0).max(100).nullable(),
+    vatAmount: filler,
+    vatReclaimable: z.boolean(),
+    onSupplierInvoice: z.boolean().nullable(),
+  })
+  .refine((l) => l.vatRate !== null || l.vatAmount === 0, { message: "Áfakulcs nélkül az áfa összege 0.", path: ["vatAmount"] });
+
+/** Az eredeti pénznem, ha nem forint (tájékoztatásul; az összegek mindig forintban, fillérben). */
+const originalCurrency = z.object({ code: z.string().regex(/^[A-Z]{3}$/), rate: z.number().positive() });
+
+/** Kulcsonkénti összesítő sor (napi zárás). */
+const rateRow = z
+  .object({ vatRate: z.number().min(0).max(100).nullable(), net: filler, vat: filler, gross: filler })
+  .refine((r) => r.gross === r.net + r.vat, { message: "A bruttó összeg a nettó és az áfa összege.", path: ["gross"] })
+  .refine((r) => r.vatRate !== null || r.vat === 0, { message: "Áfakulcs nélkül az áfa összege 0.", path: ["vat"] });
+const uniqueRates = (rows: Array<{ vatRate: number | null }>) => new Set(rows.map((r) => r.vatRate)).size === rows.length;
+const sumRows = (rows: Array<{ net: number; vat: number }>) => rows.reduce((s, r) => ({ net: s.net + r.net, vat: s.vat + r.vat }), { net: 0, vat: 0 });
+
+/** Egy Készlet-forrásrekord (pl. a kiegyenlített számla melyik Készlet-beszerzésből vagy -eladásból jött). */
+const recordRef = z.object({ module: z.enum(MODULES), recordType: z.string().min(1).max(60), recordId: z.string().min(1).max(100) });
+
+/**
  * Az eseménytípusok egyetlen helye (TERV.md F7). Új kapcsolat itt vehető fel, a meglévő modulok
  * módosítása nélkül; a tartalom változásához új verzió kell.
  */
@@ -258,6 +303,184 @@ export const EVENT_TYPES: readonly EventTypeDefinition[] = [
     description: "A Készletben visszavontak egy mozgást (KK4).",
     consumers: ["konyvelo"],
     payload: z.object({ movementId: z.string(), reason: z.string() }),
+  },
+  {
+    type: "keszlet.beszerzes.veglegesitve",
+    version: 3,
+    description:
+      "A Készletben véglegesítettek egy beszerzést (KK1): tételenként, hogy az áfa visszaigényelhető-e, és a szállítási díj külön, azzal, hogy rajta van-e a szállító számláján (F15.3, F15.7/2).",
+    consumers: ["konyvelo"],
+    payload: z
+      .object({
+        purchaseId: z.string(),
+        receivedDate: isoDate,
+        invoiceDate: isoDate.nullable(),
+        fulfillmentDate: isoDate.nullable(),
+        invoiceNumber: z.string().max(100).nullable(),
+        supplier: partnerRef.nullable(),
+        /** Ha a beszerzés devizában volt: a pénznem és az árfolyam (az összegek ettől még forintban vannak). */
+        originalCurrency: originalCurrency.nullable(),
+        lines: z.array(purchaseLineV3).min(1),
+        shipping: purchaseShipping.nullable(),
+        /**
+         * A szállító számlájának összesene: a tételek, és a szállítási díj, ha a számlán van
+         * (`onSupplierInvoice === true`). Ha nincs rajta vagy nem tudni, a díj nem része.
+         */
+        totals,
+      })
+      .refine(
+        (p) => {
+          const ship = p.shipping?.onSupplierInvoice === true ? p.shipping : null;
+          const net = p.lines.reduce((s, l) => s + l.netAmount, 0) + (ship?.netAmount ?? 0);
+          const vat = p.lines.reduce((s, l) => s + l.vatAmount, 0) + (ship?.vatAmount ?? 0);
+          return net === p.totals.net && vat === p.totals.vat;
+        },
+        { message: "Az összesen nem egyezik a tételek (és a számlán lévő szállítási díj) összegével.", path: ["totals"] },
+      ),
+  },
+  {
+    type: "keszlet.leltar.elteres",
+    version: 1,
+    description:
+      "A Készletben leltári hiányt, többletet vagy selejtet rögzítettek (KK7). A Könyvelőben mindig jóváhagyandó piszkozat lesz (F15.5).",
+    consumers: ["konyvelo"],
+    payload: z.object({
+      movementId: z.string(),
+      date: isoDate,
+      kind: z.enum(["SHORTAGE", "SURPLUS", "SCRAP"]),
+      productId: z.string().min(1),
+      productName: z.string().min(1).max(300),
+      quantity: z.number().positive(),
+      unit: z.string().max(30).nullable(),
+      location: z.object({ id: z.string(), name: z.string().max(200) }).nullable(),
+      /**
+       * A bekerülési érték: hiánynál és selejtnél a kiadáskori egységköltségen (a mozgáson rögzítve),
+       * többletnél a megadott egységáron. Soronként egész fillérre kerekítve.
+       */
+      value: filler.nonnegative(),
+      note: z.string().max(500).nullable(),
+    }),
+  },
+  {
+    type: "keszlet.napi_zaras.elkuldve",
+    version: 1,
+    description:
+      "A Készletben elküldtek egy napi zárást (KK8): a nap készpénzes (vevő nélküli) eladásai és visszavételei áfakulcsonként, a mozgások listájával. A Könyvelőben jóváhagyandó pénztárbevételi piszkozat lesz (F15.5).",
+    consumers: ["konyvelo"],
+    payload: z
+      .object({
+        closingId: z.string(),
+        date: isoDate,
+        location: z.object({ id: z.string(), name: z.string().max(200) }),
+        /** A készpénzes eladások kulcsonként (minden kulcs legfeljebb egyszer). */
+        sales: z.array(rateRow),
+        /** A készpénzes (vevő nélküli) visszavételek kulcsonként (F15.8): a pénztárból kifizetett összeg. */
+        returns: z.array(rateRow),
+        saleIds: z.array(z.string()),
+        returnIds: z.array(z.string()),
+        /** Eladások mínusz visszavételek. */
+        totals,
+      })
+      .refine((p) => uniqueRates(p.sales) && uniqueRates(p.returns), { message: "Egy áfakulcs csak egyszer szerepelhet.", path: ["sales"] })
+      .refine(
+        (p) => {
+          const s = sumRows(p.sales);
+          const r = sumRows(p.returns);
+          return p.totals.net === s.net - r.net && p.totals.vat === s.vat - r.vat;
+        },
+        { message: "Az összesen nem egyezik az eladások és a visszavételek különbségével.", path: ["totals"] },
+      ),
+  },
+  {
+    type: "keszlet.napi_zaras.modosult",
+    version: 1,
+    description:
+      "Egy már elküldött napi zárás napjára utólag mozgást rögzítettek vagy javítottak (KK8). A zárás nem íródik felül; a Könyvelőben Teendő lesz. Forrásrekordja ugyanaz, mint a zárásé.",
+    consumers: ["konyvelo"],
+    payload: z.object({
+      closingId: z.string(),
+      date: isoDate,
+      location: z.object({ id: z.string(), name: z.string().max(200) }),
+      movementIds: z.array(z.string()).min(1),
+    }),
+  },
+  {
+    type: "keszlet.visszaru.veglegesitve",
+    version: 1,
+    description:
+      "A Készletben jóváhagytak egy részleges vevői visszavételt vagy szállítói visszaküldést (F15.8). Forrásrekordja az eredeti mozgásé, így csak az eredeti esemény után adható át. A Könyvelőben jóváhagyandó helyesbítő piszkozat lesz.",
+    consumers: ["konyvelo"],
+    payload: z
+      .object({
+        returnId: z.string(),
+        kind: z.enum(["CUSTOMER_RETURN", "SUPPLIER_RETURN"]),
+        /** Az eredeti mozgás: vevői visszavételnél eladás, szállítói visszaküldésnél beszerzés. */
+        original: z.object({ movementKind: z.enum(["SALE", "PURCHASE"]), movementId: z.string() }),
+        date: isoDate,
+        partner: partnerRef.nullable(),
+        /** Vevő nélküli (készpénzes) eladás visszavétele: a pénztárból fizetik vissza, a napi zárásba kerül. */
+        cash: z.boolean(),
+        reason: z.string().max(500),
+        /** Az eredeti mozgás áraiból, arányosan, soronként fillérre kerekítve. */
+        lines: z.array(stockLineV2).min(1),
+        totals,
+        /** Szállítói visszaküldésnél: visszaigényelhető volt-e az eredeti beszerzés áfája. Vevői visszavételnél null. */
+        vatReclaimable: z.boolean().nullable(),
+        /** Vevői visszavételnél a készletbe visszakerülő bekerülési érték (az eladáskori egységköltségen). Szállítói visszaküldésnél null. */
+        costOfGoods: filler.nonnegative().nullable(),
+      })
+      .refine(withTotals, { message: "Az összesen nem egyezik a tételek összegével.", path: ["totals"] })
+      .refine((p) => (p.kind === "CUSTOMER_RETURN") === (p.original.movementKind === "SALE"), {
+        message: "Vevői visszavétel eladáshoz, szállítói visszaküldés beszerzéshez tartozik.",
+        path: ["original", "movementKind"],
+      })
+      .refine((p) => (p.kind === "CUSTOMER_RETURN" ? p.costOfGoods !== null && p.vatReclaimable === null : p.costOfGoods === null && p.vatReclaimable !== null), {
+        message: "Vevői visszavételnél a bekerülési érték kell, szállítói visszaküldésnél a visszaigényelhetőség.",
+        path: ["costOfGoods"],
+      })
+      .refine((p) => p.kind === "CUSTOMER_RETURN" || !p.cash, { message: "Szállítói visszaküldés nem lehet készpénzes visszavétel.", path: ["cash"] }),
+  },
+  {
+    type: "keszlet.mozgas.sztornozva",
+    version: 3,
+    description:
+      "A Készletben visszavontak egy beszerzést, eladást, leltáreltérést vagy visszárut (KK4). A forrásrekord ugyanaz, mint a visszavont mozgás eseményéé (a sorrend így biztos).",
+    consumers: ["konyvelo"],
+    payload: z.object({ movementKind: z.enum(["PURCHASE", "SALE", "INVENTORY", "RETURN"]), movementId: z.string(), date: isoDate, reason: z.string().max(500) }),
+  },
+  {
+    type: "konyvelo.kiegyenlites.rogzitve",
+    version: 3,
+    description:
+      "A Könyvelőben kiegyenlítettek (párosítottak) egy vevői vagy szállítói számlát (KK6), a tétel utána nyitott összegével és a Készlet-forrásával, hogy a fogadó ne számoljon és ne találgasson.",
+    consumers: ["keszlet"],
+    payload: z.object({
+      settlementId: z.string(),
+      documentId: z.string(),
+      settledDocumentId: z.string(),
+      amount: filler.positive(),
+      date: isoDate,
+      /** A kiegyenlített tétel nyitott összege a párosítás után (0: teljesen kiegyenlítve). */
+      itemOpenAfter: filler.nonnegative(),
+      /** Ha a kiegyenlített bizonylat egy másik modul rekordjából jött vagy ahhoz kapcsolódik (pl. Készlet-beszerzés). */
+      settledSources: z.array(recordRef),
+    }),
+  },
+  {
+    type: "konyvelo.kiegyenlites.bontva",
+    version: 2,
+    description: "A Könyvelőben bontottak egy párosítást (kézzel vagy sztornó miatt) (KK6), a tétel utána nyitott összegével és a Készlet-forrásával.",
+    consumers: ["keszlet"],
+    payload: z.object({
+      settlementId: z.string(),
+      documentId: z.string(),
+      settledDocumentId: z.string(),
+      amount: filler.positive(),
+      reason: z.enum(["MANUAL", "REVERSAL"]),
+      /** A tétel nyitott összege a bontás után. Sztornónál 0, mert a sztornó zárja a tételt. */
+      itemOpenAfter: filler.nonnegative(),
+      settledSources: z.array(recordRef),
+    }),
   },
   {
     type: "torzs.partner.valtozott",

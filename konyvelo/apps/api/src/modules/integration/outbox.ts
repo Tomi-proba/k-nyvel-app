@@ -184,31 +184,70 @@ async function settlementDocs(tx: Tx, rows: SettlementRow[]) {
   return new Map(ls.map((l) => [l.id, l.documentId]));
 }
 
+/**
+ * A kiegyenlített tétel nyitott összege MOST (a párosítás vagy bontás után, ugyanabban a tranzakcióban),
+ * ugyanúgy számolva, mint a folyószámla (minden párosítás, amelyben a sor szerepel).
+ */
+async function itemOpenAfter(tx: Tx, itemLineId: string): Promise<number> {
+  const r = await tx.execute<{ open: string }>(sql`
+    SELECT abs(l.amount) - coalesce((SELECT sum(s.amount) FROM settlements s WHERE l.id IN (s.item_line_id, s.settling_line_id)), 0) AS open
+    FROM journal_lines l WHERE l.id = ${itemLineId}`);
+  return Math.max(0, Number(r.rows[0]?.open ?? 0));
+}
+
+/** Ha a kiegyenlített bizonylat más modul rekordjából jött vagy ahhoz kapcsolódik (pl. Készlet-beszerzés, -eladás). */
+async function settledSources(tx: Tx, documentId: string) {
+  const rows = await tx
+    .selectDistinct({ module: integrationRecords.sourceModule, recordType: integrationRecords.sourceRecordType, recordId: integrationRecords.sourceRecordId })
+    .from(integrationRecords)
+    .where(and(eq(integrationRecords.documentId, documentId), inArray(integrationRecords.kind, ["PURCHASE", "PURCHASE_LINK", "SALE_LINK"])));
+  return rows.sort((a, b) => `${a.module}/${a.recordType}/${a.recordId}`.localeCompare(`${b.module}/${b.recordType}/${b.recordId}`));
+}
+
 /** Párosítás (kiegyenlítés). A sztornó saját párosításai (az eredeti és a sztornó sorai) nem mennek ki. */
 export async function emitSettlementsCreated(tx: Tx, companyId: string, rows: SettlementRow[], date: string): Promise<void> {
   const real = rows.filter((r) => r.source !== "REVERSAL");
   if (!real.length || !(await isLinked(tx, companyId))) return;
   const docOf = await settlementDocs(tx, real);
   for (const r of real) {
+    const settledDocumentId = docOf.get(r.itemLineId)!;
     await emitEvent(tx, companyId, {
       type: "konyvelo.kiegyenlites.rogzitve",
-      version: 2,
+      version: 3,
       record: { type: "kiegyenlites", id: r.id },
-      payload: { settlementId: r.id, documentId: docOf.get(r.settlingLineId)!, settledDocumentId: docOf.get(r.itemLineId)!, amount: Math.abs(r.amount), date },
+      payload: {
+        settlementId: r.id,
+        documentId: docOf.get(r.settlingLineId)!,
+        settledDocumentId,
+        amount: Math.abs(r.amount),
+        date,
+        itemOpenAfter: await itemOpenAfter(tx, r.itemLineId),
+        settledSources: await settledSources(tx, settledDocumentId),
+      },
     });
   }
 }
 
+/** Bontás. Sztornónál a hívó előbb a sztornó saját párosításait is rögzíti, így a tétel nyitott összege 0. */
 export async function emitSettlementsRemoved(tx: Tx, companyId: string, rows: SettlementRow[], reason: "MANUAL" | "REVERSAL"): Promise<void> {
   const real = rows.filter((r) => r.source !== "REVERSAL");
   if (!real.length || !(await isLinked(tx, companyId))) return;
   const docOf = await settlementDocs(tx, real);
   for (const r of real) {
+    const settledDocumentId = docOf.get(r.itemLineId)!;
     await emitEvent(tx, companyId, {
       type: "konyvelo.kiegyenlites.bontva",
-      version: 1,
+      version: 2,
       record: { type: "kiegyenlites", id: r.id },
-      payload: { settlementId: r.id, documentId: docOf.get(r.settlingLineId)!, settledDocumentId: docOf.get(r.itemLineId)!, amount: Math.abs(r.amount), reason },
+      payload: {
+        settlementId: r.id,
+        documentId: docOf.get(r.settlingLineId)!,
+        settledDocumentId,
+        amount: Math.abs(r.amount),
+        reason,
+        itemOpenAfter: await itemOpenAfter(tx, r.itemLineId),
+        settledSources: await settledSources(tx, settledDocumentId),
+      },
     });
   }
 }
