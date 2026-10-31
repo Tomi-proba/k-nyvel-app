@@ -387,6 +387,142 @@ async function withdrawal(ctx: Ctx, p: { movementKind: "PURCHASE" | "SALE"; move
   return { outcome: "APPLIED", ...(done.length ? { target: { recordType: "visszavonas", recordId: ctx.event.source.recordId, label: done.join(", ") } } : {}) };
 }
 
+type StockApproval = {
+  movementId: string;
+  purpose: "RECEIPT" | "ISSUE" | "CUSTOMER_RETURN" | "SUPPLIER_RETURN" | "REVERSAL";
+  sourceDocument: { documentId: string; serialNumber: string | null; eventId: string };
+  originalMovementId: string | null;
+  date: string;
+  productId: string;
+  productName: string;
+  unit: string | null;
+  expectedQuantity: number;
+  actualQuantity: number;
+  note: string | null;
+  costOfGoods: number | null;
+};
+
+const MOZGAS_SZOVEG: Record<StockApproval["purpose"], { mi: string; hiany: string; tenyleges: string }> = {
+  RECEIPT: { mi: "beérkezésnél", hiany: "nem érkezett meg", tenyleges: "érkezett" },
+  ISSUE: { mi: "kiadásnál", hiany: "nem ment ki", tenyleges: "ment ki" },
+  CUSTOMER_RETURN: { mi: "vevői visszavételnél", hiany: "nem érkezett vissza", tenyleges: "érkezett vissza" },
+  SUPPLIER_RETURN: { mi: "szállítói visszaküldésnél", hiany: "nem ment vissza", tenyleges: "ment vissza" },
+  REVERSAL: { mi: "a sztornózott számla visszavételénél", hiany: "nem mozdult", tenyleges: "mozdult" },
+};
+
+/**
+ * F15.4: a Készletben jóváhagyták (vagy elutasították) a Könyvelő bizonylatából jött mozgást.
+ * - Eltérő mennyiségnél MINDIG Teendő, és a könyvelés magától nem változik (helyesbítő számla vagy egyeztetés
+ *   kell, ezt ember dönti el).
+ * - Kiadásnál az ELÁBÉ, vevői visszavételnél az ELÁBÉ csökkentése piszkozat lesz, mindig jóváhagyással (D9).
+ * - A sztornózott számla kiadásának visszavételekor a hozzá tartozó ELÁBÉ sztornója javasolt (jóváhagyással),
+ *   de csak ha a teljes mennyiség visszajött; részleges visszavételnél csak Teendő.
+ */
+async function stockApproved(ctx: Ctx, p: StockApproval): Promise<InboundResult> {
+  const { tx, companyId } = ctx;
+  const [doc] = await tx.select().from(documents).where(and(eq(documents.companyId, companyId), eq(documents.id, p.sourceDocument.documentId)));
+  const serial = doc?.serialNumber ?? p.sourceDocument.serialNumber ?? "ismeretlen bizonylat";
+  const todos: Array<NonNullable<InboundResult["todo"]>> = [];
+  const szoveg = MOZGAS_SZOVEG[p.purpose];
+  const egyseg = p.unit ? ` ${p.unit}` : "";
+
+  if (!doc) {
+    const key = `keszlet-mozgas:${p.movementId}`;
+    const title = `A Készlet egy jóváhagyott mozgást (${p.productName}) a(z) ${serial} bizonylathoz kötött, de az nincs meg a Könyvelőben. Nézze át.`;
+    await openTodo(tx, companyId, { key, kind: "STOCK_DISCREPANCY", title, hubKey: key });
+    return { outcome: "TODO", todo: { key, title } };
+  }
+
+  // A mozgás és a bizonylat kapcsolata („honnan jött?”, és a kiegyenlítés a Készlet felé). Csak a beérkezés és
+  // a kiadás köthető a számlához; a visszáru a helyesbítőhöz tartozik, a visszavétel a sztornóhoz.
+  if (p.purpose === "RECEIPT" || p.purpose === "ISSUE") await addRecord(ctx, p.purpose === "RECEIPT" ? "PURCHASE_LINK" : "SALE_LINK", doc.id);
+
+  if (p.actualQuantity !== p.expectedQuantity) {
+    const key = `elteres:${p.movementId}`;
+    const title =
+      p.actualQuantity === 0
+        ? `Eltérés a ${szoveg.mi}: ${serial} – ${p.productName}: ${p.expectedQuantity}${egyseg} ${szoveg.hiany} (a Készletben elutasították).`
+        : `Eltérés a ${szoveg.mi}: ${serial} – ${p.productName}: ${p.expectedQuantity}${egyseg} helyett ${p.actualQuantity}${egyseg} ${szoveg.tenyleges}.`;
+    const detail = [
+      p.note ? `A Készlet megjegyzése: ${p.note}` : null,
+      "A könyvelés magától nem változott. Ha a számla nem a tényleges mennyiségről szól, helyesbítő számla kell (vagy egyeztessen a partnerrel); ha a Készletben tévedtek, ott javítsák.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    await openTodo(tx, companyId, { key, kind: "STOCK_DISCREPANCY", title, detail, documentId: doc.id, hubKey: key });
+    todos.push({ key, title, detail, url: `/konyveles/${doc.id}` });
+  }
+
+  let cogsDoc: string | null = null;
+  const cost = p.costOfGoods ?? 0;
+  if ((p.purpose === "ISSUE" || p.purpose === "CUSTOMER_RETURN") && cost > 0) {
+    const { ids, problems } = await mappedAccounts(ctx, ["cogsAccountId", "inventoryAccountId"]);
+    const issue = p.purpose === "ISSUE";
+    const input = documentInputSchema.parse({
+      docType: "VEGY",
+      description: `${issue ? "ELÁBÉ" : "ELÁBÉ csökkentése (visszavétel)"} – ${serial}: ${p.productName}, ${p.actualQuantity}${egyseg}`.slice(0, 500),
+      issueDate: p.date,
+      accountingDate: p.date,
+      lines: issue
+        ? [{ accountId: ids.cogsAccountId ?? null, side: "D", amount: cost }, { accountId: ids.inventoryAccountId ?? null, side: "C", amount: cost }]
+        : [{ accountId: ids.inventoryAccountId ?? null, side: "D", amount: cost }, { accountId: ids.cogsAccountId ?? null, side: "C", amount: cost }],
+    });
+    const key = `elabe:${p.movementId}`;
+    const created = await attempt(tx, (sp) => createDocument(sp, companyId, SYSTEM_USER, IP, input, "INTEGRATION"));
+    if (!created.ok) {
+      const title = `A Készlet ${szoveg.mi} (${serial}, ${formatHuf(cost)}) az ELÁBÉ-piszkozat nem készülhetett el: ${created.message}`;
+      await openTodo(tx, companyId, { key, kind: "MISSING_DATA", title, hubKey: key });
+      todos.push({ key, title });
+    } else {
+      cogsDoc = created.value;
+      const title = `${issue ? "ELÁBÉ" : "ELÁBÉ csökkentése"} jóváhagyásra vár: ${serial} – ${p.productName}, ${formatHuf(cost)}`;
+      await openTodo(tx, companyId, { key, kind: "COGS_APPROVAL", title, detail: problems.join("\n") || null, documentId: cogsDoc, hubKey: key });
+      if (problems.length) await openTodo(tx, companyId, { key: `hiany:${cogsDoc}`, kind: "MISSING_DATA", title: `Hiányzó adat az ELÁBÉ-piszkozaton: ${problems[0]}`, detail: problems.join("\n"), documentId: cogsDoc });
+      todos.push({ key, title, url: `/konyveles/${cogsDoc}` });
+    }
+  }
+  // Az ELÁBÉ-tétel a mozgás SAJÁT azonosítójához kötve (a visszárué a visszárumozgáséhoz), hogy egy későbbi
+  // visszavétel vagy visszavonás pontosan a hozzá tartozót találja meg.
+  if (p.purpose === "ISSUE" || p.purpose === "CUSTOMER_RETURN") await addRecord(ctx, "COGS", cogsDoc, { sourceRecordId: p.movementId });
+
+  if (p.purpose === "REVERSAL" && p.originalMovementId) {
+    const cogs = await tx
+      .select()
+      .from(integrationRecords)
+      .where(
+        and(
+          eq(integrationRecords.companyId, companyId),
+          eq(integrationRecords.sourceModule, "keszlet"),
+          eq(integrationRecords.sourceRecordType, ctx.event.source.recordType),
+          eq(integrationRecords.sourceRecordId, p.originalMovementId),
+          eq(integrationRecords.kind, "COGS"),
+        ),
+      );
+    for (const r of cogs) {
+      if (!r.documentId) continue;
+      const [c] = await tx.select().from(documents).where(eq(documents.id, r.documentId));
+      if (!c) continue;
+      const key = `sztorno:${c.id}`;
+      if (p.actualQuantity !== p.expectedQuantity) continue; // részleges visszavétel: csak az eltérés Teendője
+      if (c.status === "DRAFT") {
+        const title = `A(z) ${serial} sztornója miatt az áru visszajött: a hozzá tartozó ELÁBÉ-piszkozatot törölje.`;
+        await openTodo(tx, companyId, { key, kind: "SOURCE_WITHDRAWN", title, documentId: c.id, hubKey: key });
+        todos.push({ key, title, url: `/konyveles/${c.id}` });
+        continue;
+      }
+      const [already] = await tx.select({ id: documents.id }).from(documents).where(eq(documents.reversesDocumentId, c.id));
+      if (already) continue;
+      await addRecord(ctx, "REVERSAL", c.id, { receivedDate: p.date, sourceLabel: `Visszavétel a(z) ${serial} sztornója miatt`.slice(0, 300) });
+      const title = `Sztornó javasolt: a(z) ${serial} sztornója miatt az áru visszajött, a(z) ${c.serialNumber} ELÁBÉ-tételt sztornózni kell.`;
+      await openTodo(tx, companyId, { key, kind: "REVERSAL_APPROVAL", title, documentId: c.id, hubKey: key });
+      todos.push({ key, title, url: `/konyveles/${c.id}` });
+    }
+  }
+
+  if (todos.length) return { outcome: "TODO", target: docTarget(cogsDoc ?? doc.id, cogsDoc ? "ELÁBÉ-piszkozat" : (doc.serialNumber ?? "Bizonylat")), todo: { ...todos[0]!, ...(todos.length > 1 ? { detail: `${todos.length} teendő: ${todos.map((t) => t.title).join(" | ")}`.slice(0, 2000) } : {}) } };
+  return { outcome: "APPLIED", target: docTarget(doc.id, doc.serialNumber ?? "Bizonylat") };
+}
+
 /** A Készlet termékei a termékkérdéshez (KK3); csak olvasható másolat. */
 async function product(ctx: Ctx, p: { productId: string; name: string; sku: string | null; unit: string | null; vatRate: number | null; active: boolean }): Promise<InboundResult> {
   await ctx.tx
@@ -447,6 +583,8 @@ export async function applyInbound(tx: Tx, companyId: string, event: EventEnvelo
       return sale(ctx, payload);
     case "keszlet.mozgas.sztornozva@2":
       return withdrawal(ctx, payload);
+    case "keszlet.mozgas.jovahagyva@1":
+      return stockApproved(ctx, payload);
     case "keszlet.termek.valtozott@1":
       return product(ctx, payload);
     case "torzs.partner.valtozott@1":

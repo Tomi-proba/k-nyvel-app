@@ -18,7 +18,9 @@ export type TodoKind =
   | "PARTNER"
   | "INTRO_MONTH"
   | "HUB_UNREACHABLE"
-  | "UNSUPPORTED";
+  | "UNSUPPORTED"
+  /** A Könyvelőből jött mozgást a Készletben eltérő mennyiséggel hagyták jóvá (vagy nem érkezett / nem ment ki). */
+  | "STOCK_DISCREPANCY";
 
 export async function openTodo(
   tx: Tx,

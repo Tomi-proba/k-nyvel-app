@@ -88,6 +88,7 @@ const outbox = async () => (await ownerQuery("SELECT envelope, sent_at FROM inte
 const todos = async () => (await admin.get(`${c()}/integration/todos`)).json() as Array<{ id: string; kind: string; title: string; documentId: string | null }>;
 const settings = (over: Record<string, unknown> = {}) => ownerQuery(`UPDATE integration_settings SET ${Object.keys(over).map((k, i) => `${k} = $${i + 2}`).join(", ")} WHERE company_id = $1`, [companyId, ...Object.values(over)]);
 const doc = async (id: string) => (await admin.get(`${c()}/documents/${id}`)).json() as DocumentDto;
+const doc_ = doc;
 
 /** Memóriabeli ál-központ az átadóhoz. */
 class FakeHub implements HubClient {
@@ -534,6 +535,117 @@ describe("csoportos jóváhagyás (F14.8)", () => {
     const manual = (await admin.post(`${c()}/documents`, { docType: "VEGY", description: "kézi piszkozat", accountingDate: "2026-11-20" })).json() as DocumentDto;
     const res = (await admin.post(`${c()}/integration/approvals`, { batchId: randomUUID(), documentIds: [manual.id] })).json() as ApprovalResultDto;
     expect(res.results[0]).toMatchObject({ ok: false });
+  });
+});
+
+describe("beérkező: a Könyvelőből jött mozgás jóváhagyása a Készletben (F15.4)", () => {
+  const approval = (doc: DocumentDto, movementId: string, over: Record<string, unknown> = {}, recordId = movementId, sequence = 1) =>
+    keszletEvent("keszlet.mozgas.jovahagyva", 1, "konyvelo_mozgas", recordId, {
+      movementId,
+      purpose: "RECEIPT",
+      sourceDocument: { documentId: doc.id, serialNumber: doc.serialNumber, eventId: randomUUID() },
+      originalMovementId: null,
+      date: "2026-11-12",
+      productId: "P1",
+      productName: "Bejárati ajtó",
+      unit: "db",
+      expectedQuantity: 10,
+      actualQuantity: 10,
+      note: null,
+      costOfGoods: null,
+      ...over,
+    }, sequence);
+  const szsz = async (ext: string) =>
+    (await admin.post(`${c()}/documents`, {
+      docType: "SZSZ", partnerId: supplier.id, externalNumber: ext, description: "Áru", issueDate: "2026-11-10", fulfillmentDate: "2026-11-10", accountingDate: "2026-11-10", post: true,
+      lines: [{ accountId: acc["261"], side: "D", amount: 1_000_000 }, { accountId: acc["466"], side: "D", amount: 270_000 }, { accountId: acc["454"], side: "C", amount: 1_270_000 }],
+    })).json() as DocumentDto;
+  const vsz = async (ext: string) =>
+    (await admin.post(`${c()}/documents`, {
+      docType: "VSZ", partnerId: customer.id, externalNumber: ext, description: "Eladás", issueDate: "2026-11-10", fulfillmentDate: "2026-11-10", accountingDate: "2026-11-10", dueDate: "2026-11-30", post: true,
+      lines: [{ accountId: acc["311"], side: "D", amount: 381_000 }, { accountId: acc["911"], side: "C", amount: 300_000 }, { accountId: acc["467"], side: "C", amount: 81_000 }],
+    })).json() as DocumentDto;
+
+  it("eltérő mennyiség: Teendő a bizonylaton, a megjegyzéssel; a könyvelés magától nem változik; pontosan egyszer", async () => {
+    await settings({ posting_mode: "AUTO" });
+    const doc = await szsz("ELT-1");
+    const before = await doc_(doc.id);
+    const e = approval(doc, "M-ELT-1", { actualQuantity: 8, note: "2 db sérült" });
+    const r = await deliver(e);
+    expect(r).toMatchObject({ outcome: "TODO", todo: { key: "elteres:M-ELT-1", title: expect.stringMatching(/beérkezésnél.*ELT|10 db helyett 8 db érkezett/) } });
+    expect(await deliver(e)).toMatchObject({ outcome: "DUPLICATE" });
+    const t = (await todos()).filter((x) => x.kind === "STOCK_DISCREPANCY" && x.documentId === doc.id);
+    expect(t).toHaveLength(1);
+    expect(t[0]!.title).toContain("10 db helyett 8 db érkezett");
+    expect(((await admin.get(`${c()}/integration/todos`)).json() as Array<{ detail: string | null; documentId: string | null }>).find((x) => x.documentId === doc.id)!.detail).toMatch(/2 db sérült[\s\S]*magától nem változott/);
+    // A bizonylat és a könyvelés változatlan, új bizonylat sem lett.
+    expect(await doc_(doc.id)).toEqual(before);
+    expect((await ownerQuery("SELECT count(*)::int AS n FROM documents WHERE description LIKE '%ELT-1%' OR external_number = 'ELT-1'")).rows[0].n).toBe(1);
+    // Kézzel lezárható.
+    const id = (t[0] as { id: string }).id;
+    expect((await admin.post(`${c()}/integration/todos/${id}/resolve`)).statusCode).toBe(200);
+
+    // Egyező mennyiségnél nincs Teendő; elutasításnál (0) „nem érkezett meg”.
+    expect(await deliver(approval(doc, "M-ELT-2"))).toMatchObject({ outcome: "APPLIED", target: { recordId: doc.id } });
+    expect(await deliver(approval(doc, "M-ELT-3", { actualQuantity: 0, note: "Nem jött meg" }))).toMatchObject({ outcome: "TODO", todo: { title: expect.stringMatching(/nem érkezett meg/) } });
+    await settings({ posting_mode: "DRAFT_ONLY" });
+  });
+
+  it("kiadás: ELÁBÉ-piszkozat mindig jóváhagyással (automatikus módban is); eltérésnél mellé Teendő; a fizetés a Készlet felé is kimegy", async () => {
+    await settings({ posting_mode: "AUTO" });
+    const doc = await vsz("KI-1");
+    const r = await deliver(approval(doc, "M-KI-1", { purpose: "ISSUE", expectedQuantity: 3, actualQuantity: 2, note: "1 db hiányzott", costOfGoods: 162_500 }));
+    expect(r).toMatchObject({ outcome: "TODO", todo: { key: "elteres:M-KI-1" } });
+    const cogs = (await todos()).find((t) => t.kind === "COGS_APPROVAL" && t.title.includes("KI-") || (t.kind === "COGS_APPROVAL" && t.title.includes(doc.serialNumber!)))!;
+    const draft = await doc_(cogs.documentId!);
+    expect(draft).toMatchObject({ status: "DRAFT", docType: "VEGY" });
+    expect(draft.lines.map((l) => [l.accountNumber, l.side, l.amount])).toEqual([["814", "D", 162_500], ["261", "C", 162_500]]);
+    const groups = (await admin.get(`${c()}/integration/approvals`)).json() as ApprovalGroupDto[];
+    expect(groups.find((g) => g.kind === "COGS")!.items.some((i) => i.documentId === draft.id)).toBe(true);
+
+    // A vevőszámla kiegyenlítése a Készlet-mozgást is megnevezi (a Készlet ebből tudja, hogy fizetve).
+    await ownerQuery("DELETE FROM integration_outbox");
+    const itemLine = doc.lines.find((l) => l.accountId === acc["311"])!.id;
+    const bank = await admin.post(`${c()}/documents`, {
+      docType: "BANK", partnerId: customer.id, description: "Befizetés", issueDate: "2026-11-20", accountingDate: "2026-11-20", post: true,
+      lines: [{ accountId: acc["384"], side: "D", amount: 381_000 }, { accountId: acc["311"], side: "C", amount: 381_000 }], settlements: [{ itemLineId: itemLine, amount: 381_000 }],
+    });
+    expect(bank.statusCode, bank.body).toBe(201);
+    const settled = (await outbox()).find((e) => e.type === "konyvelo.kiegyenlites.rogzitve")!;
+    expect(settled.payload).toMatchObject({ itemOpenAfter: 0, settledSources: [{ module: "keszlet", recordType: "konyvelo_mozgas", recordId: "M-KI-1" }] });
+    await settings({ posting_mode: "DRAFT_ONLY" });
+  });
+
+  it("vevői visszavétel: az ELÁBÉ csökkentése piszkozat (T 261 / K 814)", async () => {
+    const doc = await vsz("KI-2");
+    await deliver(approval(doc, "M-KI-2", { purpose: "ISSUE", expectedQuantity: 2, actualQuantity: 2, costOfGoods: 100_000 }));
+    const r = await deliver(approval(doc, "M-VV-2", { purpose: "CUSTOMER_RETURN", originalMovementId: "M-KI-2", expectedQuantity: 1, actualQuantity: 1, costOfGoods: 50_000 }, "M-KI-2", 2));
+    expect(r).toMatchObject({ outcome: "TODO", todo: { key: "elabe:M-VV-2" } });
+    const t = (await todos()).find((x) => x.kind === "COGS_APPROVAL" && x.title.startsWith("ELÁBÉ csökkentése"))!;
+    expect((await doc_(t.documentId!)).lines.map((l) => [l.accountNumber, l.side, l.amount])).toEqual([["261", "D", 50_000], ["814", "C", 50_000]]);
+  });
+
+  it("a sztornózott vevőszámla teljes visszavétele: a könyvelt ELÁBÉ sztornója javasolt (jóváhagyással); részlegesnél csak Teendő", async () => {
+    const doc = await vsz("KI-3");
+    await deliver(approval(doc, "M-KI-3", { purpose: "ISSUE", expectedQuantity: 2, actualQuantity: 2, costOfGoods: 80_000 }));
+    const cogsTodo = (await todos()).find((x) => x.kind === "COGS_APPROVAL" && x.title.includes(doc.serialNumber!))!;
+    expect((await admin.post(`${c()}/documents/${cogsTodo.documentId}/post`)).statusCode).toBe(200);
+    const r = await deliver(approval(doc, "M-SZ-3", { purpose: "REVERSAL", originalMovementId: "M-KI-3", expectedQuantity: 2, actualQuantity: 2, costOfGoods: 80_000 }, "M-KI-3", 2));
+    expect(r).toMatchObject({ outcome: "TODO", todo: { key: `sztorno:${cogsTodo.documentId}` } });
+    expect((await todos()).find((x) => x.kind === "REVERSAL_APPROVAL" && x.documentId === cogsTodo.documentId)).toBeTruthy();
+    // Magától nem sztornózott.
+    expect((await ownerQuery("SELECT count(*)::int AS n FROM documents WHERE reverses_document_id = $1", [cogsTodo.documentId])).rows[0].n).toBe(0);
+
+    const doc2 = await vsz("KI-4");
+    await deliver(approval(doc2, "M-KI-4", { purpose: "ISSUE", expectedQuantity: 2, actualQuantity: 2, costOfGoods: 80_000 }));
+    const r2 = await deliver(approval(doc2, "M-SZ-4", { purpose: "REVERSAL", originalMovementId: "M-KI-4", expectedQuantity: 2, actualQuantity: 1, note: "1 db nem jött vissza", costOfGoods: 40_000 }, "M-KI-4", 2));
+    expect(r2).toMatchObject({ outcome: "TODO", todo: { key: "elteres:M-SZ-4" } });
+    expect((await todos()).filter((x) => x.title.includes(doc2.serialNumber!) && x.kind === "SOURCE_WITHDRAWN")).toEqual([]);
+  });
+
+  it("ismeretlen bizonylatra hivatkozó jóváhagyás: Teendő", async () => {
+    const fake = { id: randomUUID(), serialNumber: "SZSZ-NINCS" } as DocumentDto;
+    expect(await deliver(approval(fake, "M-X"))).toMatchObject({ outcome: "TODO", todo: { key: "keszlet-mozgas:M-X" } });
   });
 });
 

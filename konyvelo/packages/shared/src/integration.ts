@@ -70,7 +70,9 @@ export type IntegrationTodoKind =
   | "PARTNER"
   | "INTRO_MONTH"
   | "HUB_UNREACHABLE"
-  | "UNSUPPORTED";
+  | "UNSUPPORTED"
+  /** A Könyvelőből jött mozgást a Készletben eltérő mennyiséggel hagyták jóvá (vagy nem érkezett / nem ment ki). */
+  | "STOCK_DISCREPANCY";
 
 export type IntegrationTodoDto = { id: string; kind: IntegrationTodoKind; title: string; detail: string | null; documentId: string | null; createdAt: string };
 

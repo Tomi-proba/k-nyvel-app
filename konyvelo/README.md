@@ -304,7 +304,16 @@ mint eddig.**
     nélkül nem könyvelünk;
   - visszavonás → érintetlen piszkozat törlése, egyébként sztornó vagy Teendő;
   - a Készlet termékei (a termékkérdéshez);
-  - partner (csak pontos adószám-egyezésnél).
+  - partner (csak pontos adószám-egyezésnél);
+  - a Könyvelő számlájából lett Készlet-mozgás jóváhagyása (`keszlet.mozgas.jovahagyva`, TERV.md F15.4):
+    - ha a raktáros **eltérő mennyiséget** hagyott jóvá, vagy a mozgást elutasította („nem érkezett meg /
+      nem ment ki”), a bizonylaton **Teendő** lesz, a Készlet megjegyzésével. A könyvelés magától nem
+      változik: helyesbítő számla vagy egyeztetés kell, ezt ember dönti el;
+    - kiadásnál az ELÁBÉ (T 814 / K 261), vevői visszavételnél az ELÁBÉ csökkentése (T 261 / K 814)
+      **piszkozat, mindig jóváhagyással**;
+    - a sztornózott vevőszámla áruja visszajött: a hozzá tartozó ELÁBÉ sztornója javasolt (jóváhagyással), de
+      csak ha a teljes mennyiség visszajött;
+    - a kiegyenlítés ezekre a mozgásokra is hivatkozik, így a Készlet tudja, mi van kifizetve.
 
   Ugyanaz az esemény többször megérkezve is egyszer hat.
 - **„Csak piszkozat” bevezető mód:** az összekapcsoláskor magától bekapcsol. Egy hónap után Teendő
