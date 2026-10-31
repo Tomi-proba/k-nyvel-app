@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { addDays, DOCUMENT_TYPES, formatDateHu, formatHuf, todayIso } from "@konyvelo/domain";
-import { ROLE_LABELS } from "@konyvelo/shared";
+import { APPROVAL_TODO_KINDS, ROLE_LABELS } from "@konyvelo/shared";
 import { NEW_ENTRY_PATH } from "../../app/AppLayout";
 import { KeyCombo } from "../../app/shortcuts";
 import { useWorkspace } from "../../app/workspace";
@@ -165,7 +165,7 @@ function TodoCard() {
         tone: "info",
       });
     }
-    for (const it of t.integration.todos.filter((x) => !["PURCHASE_APPROVAL", "COGS_APPROVAL", "REVERSAL_APPROVAL"].includes(x.kind))) {
+    for (const it of t.integration.todos.filter((x) => !APPROVAL_TODO_KINDS.includes(x.kind))) {
       items.push({
         key: `int-${it.id}`,
         to: it.documentId ? `/konyveles/${it.documentId}` : it.kind === "PARTNER" ? "/partnerek" : "/beallitasok/integracio",

@@ -191,7 +191,7 @@ function addMonths(iso: string, n: number): string {
 // ---------- Teendők ----------
 
 /** Teendőfajták, amelyeket a felhasználó kézzel lezárhat (a többi a művelettel magától lezárul). */
-const MANUAL_RESOLVE = new Set(["INVOICE_MISSING", "PARTNER", "SOURCE_WITHDRAWN", "INTRO_MONTH", "UNSUPPORTED", "MISSING_DATA", "STOCK_DISCREPANCY"]);
+const MANUAL_RESOLVE = new Set(["INVOICE_MISSING", "PARTNER", "SOURCE_WITHDRAWN", "INTRO_MONTH", "UNSUPPORTED", "MISSING_DATA", "STOCK_DISCREPANCY", "SOURCE_CHANGED"]);
 
 // ---------- Útvonalak ----------
 

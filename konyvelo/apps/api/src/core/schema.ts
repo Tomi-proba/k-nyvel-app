@@ -375,6 +375,9 @@ export const integrationSettings = pgTable("integration_settings", {
   inputVatAccountId: uuid("input_vat_account_id"),
   outputVatAccountId: uuid("output_vat_account_id"),
   revenueAccountId: uuid("revenue_account_id"),
+  cashAccountId: uuid("cash_account_id"),
+  inventoryLossAccountId: uuid("inventory_loss_account_id"),
+  inventoryGainAccountId: uuid("inventory_gain_account_id"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
   updatedBy: uuid("updated_by"),
 });
@@ -409,7 +412,7 @@ export const integrationInbox = pgTable("integration_inbox", {
   result: jsonb("result").notNull().$type<Record<string, unknown>>(),
 });
 
-export type IntegrationRecordKind = "PURCHASE" | "COGS" | "SALE_LINK" | "PURCHASE_LINK" | "REVERSAL";
+export type IntegrationRecordKind = "PURCHASE" | "COGS" | "SALE_LINK" | "PURCHASE_LINK" | "REVERSAL" | "RETURN" | "INVENTORY" | "CASH";
 
 export const integrationRecords = pgTable("integration_records", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -426,6 +429,8 @@ export const integrationRecords = pgTable("integration_records", {
   receivedDate: d("received_date"),
   invoiceDate: d("invoice_date"),
   needsDateChoice: boolean("needs_date_choice").notNull().default(false),
+  /** Ha embernek kell átnéznie, mielőtt csoportosan jóváhagyható (0012_integracio_keszlet.sql). */
+  reviewNote: text("review_note"),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 

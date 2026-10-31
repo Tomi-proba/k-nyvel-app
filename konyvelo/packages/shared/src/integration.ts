@@ -25,6 +25,9 @@ export const INTEGRATION_ACCOUNT_KEYS = [
   "inputVatAccountId",
   "outputVatAccountId",
   "revenueAccountId",
+  "cashAccountId",
+  "inventoryLossAccountId",
+  "inventoryGainAccountId",
 ] as const;
 export type IntegrationAccountKey = (typeof INTEGRATION_ACCOUNT_KEYS)[number];
 export const INTEGRATION_ACCOUNT_LABELS: Record<IntegrationAccountKey, { label: string; number: string }> = {
@@ -35,6 +38,9 @@ export const INTEGRATION_ACCOUNT_LABELS: Record<IntegrationAccountKey, { label: 
   inputVatAccountId: { label: "Előzetesen felszámított áfa", number: "466" },
   outputVatAccountId: { label: "Fizetendő áfa", number: "467" },
   revenueAccountId: { label: "Árbevétel", number: "911" },
+  cashAccountId: { label: "Pénztár (napi pénztárzárás)", number: "381" },
+  inventoryLossAccountId: { label: "Leltári hiány és selejt ellenszámlája", number: "869" },
+  inventoryGainAccountId: { label: "Leltári többlet ellenszámlája", number: "969" },
 };
 
 const accountId = z.uuid("Érvénytelen számla.").nullable();
@@ -72,7 +78,15 @@ export type IntegrationTodoKind =
   | "HUB_UNREACHABLE"
   | "UNSUPPORTED"
   /** A Könyvelőből jött mozgást a Készletben eltérő mennyiséggel hagyták jóvá (vagy nem érkezett / nem ment ki). */
-  | "STOCK_DISCREPANCY";
+  | "STOCK_DISCREPANCY"
+  | "INVENTORY_APPROVAL"
+  | "CASH_APPROVAL"
+  | "RETURN_APPROVAL"
+  /** A forrás utólag módosult (pl. elküldött napi zárás napjára új mozgás): át kell nézni, magától nem javít. */
+  | "SOURCE_CHANGED";
+
+/** A csoportos jóváhagyásban (Könyvelés → Jóváhagyás) kezelt Teendőfajták. */
+export const APPROVAL_TODO_KINDS: readonly IntegrationTodoKind[] = ["PURCHASE_APPROVAL", "COGS_APPROVAL", "INVENTORY_APPROVAL", "CASH_APPROVAL", "RETURN_APPROVAL", "REVERSAL_APPROVAL"];
 
 export type IntegrationTodoDto = { id: string; kind: IntegrationTodoKind; title: string; detail: string | null; documentId: string | null; createdAt: string };
 
@@ -91,8 +105,15 @@ export type DocumentIntegrationDto = {
 
 // ---------- Csoportos jóváhagyás (F14.8) ----------
 
-export type ApprovalKind = "PURCHASE" | "COGS" | "REVERSAL";
-export const APPROVAL_KIND_LABELS: Record<ApprovalKind, string> = { PURCHASE: "Beszerzés", COGS: "ELÁBÉ", REVERSAL: "Sztornó" };
+export type ApprovalKind = "PURCHASE" | "COGS" | "INVENTORY" | "CASH" | "RETURN" | "REVERSAL";
+export const APPROVAL_KIND_LABELS: Record<ApprovalKind, string> = {
+  PURCHASE: "Beszerzés",
+  COGS: "ELÁBÉ",
+  INVENTORY: "Leltár",
+  CASH: "Pénztár",
+  RETURN: "Visszáru",
+  REVERSAL: "Sztornó",
+};
 
 export type ApprovalItemDto = {
   documentId: string;

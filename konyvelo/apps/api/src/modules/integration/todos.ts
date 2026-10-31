@@ -1,5 +1,5 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
-import type { IntegrationTodoDto } from "@konyvelo/shared";
+import { APPROVAL_TODO_KINDS, type IntegrationTodoDto } from "@konyvelo/shared";
 import type { Executor, Tx } from "../../core/db";
 import { integrationRecords, integrationSettings, integrationTodos } from "../../core/schema";
 
@@ -20,7 +20,11 @@ export type TodoKind =
   | "HUB_UNREACHABLE"
   | "UNSUPPORTED"
   /** A Könyvelőből jött mozgást a Készletben eltérő mennyiséggel hagyták jóvá (vagy nem érkezett / nem ment ki). */
-  | "STOCK_DISCREPANCY";
+  | "STOCK_DISCREPANCY"
+  | "INVENTORY_APPROVAL"
+  | "CASH_APPROVAL"
+  | "RETURN_APPROVAL"
+  | "SOURCE_CHANGED";
 
 export async function openTodo(
   tx: Tx,
@@ -70,6 +74,6 @@ export async function integrationTodosSummary(db: Executor, companyId: string) {
   const [s] = await db.select({ linkedAt: integrationSettings.linkedAt }).from(integrationSettings).where(eq(integrationSettings.companyId, companyId));
   if (!s?.linkedAt) return null;
   const todos = await openIntegrationTodos(db, companyId);
-  return { todos, approvals: todos.filter((t) => t.kind === "PURCHASE_APPROVAL" || t.kind === "COGS_APPROVAL" || t.kind === "REVERSAL_APPROVAL").length };
+  return { todos, approvals: todos.filter((t) => APPROVAL_TODO_KINDS.includes(t.kind)).length };
 }
 

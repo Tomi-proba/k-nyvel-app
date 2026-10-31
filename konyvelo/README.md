@@ -314,6 +314,28 @@ mint eddig.**
     - a sztornózott vevőszámla áruja visszajött: a hozzá tartozó ELÁBÉ sztornója javasolt (jóváhagyással), de
       csak ha a teljes mennyiség visszajött;
     - a kiegyenlítés ezekre a mozgásokra is hivatkozik, így a Készlet tudja, mi van kifizetve.
+  - **beszerzés v3:** a nem visszaigényelhető áfa és a szállító számláján lévő szállítási díj a 261-re kerül. Amit
+    nem lehet eldönteni, azt nem találgatja ki:
+    - a devizás számla és az, hogy „nem tudni, a számlán van-e a szállítási díj”, **átnézendő**: csoportosan
+      addig nem hagyható jóvá, egyenként, a bizonylaton igen;
+    - a külön (fuvarozói) számlán lévő szállítási díjról Teendő szól;
+  - **leltáreltérés** → vegyes piszkozat: hiány és selejt esetén T ellenszámla (alapértelmezés: 869) / K 261,
+    többlet esetén T 261 / K ellenszámla (alapértelmezés: 969);
+  - **napi pénztárzárás** → pénztárbevételi piszkozat: T 381 / K 911 kulcsonként / K 467. A készpénzes
+    visszavétel csökkenti; ha több a visszavétel, pénztárkiadási piszkozat lesz. A készpénzes eladások
+    „árbevétel hiányzik” Teendői lezárulnak. Ha a zárás utólag módosult, Teendő lesz belőle;
+  - **visszáru** → helyesbítő (HELY) piszkozat az eredeti számlára hivatkozva. Vevői visszavételnél
+    T 911 / T 467 / K 311, mellé az ELÁBÉ csökkentése (T 261 / K 814); szállítói visszaküldésnél T 454 /
+    K 261 / K 466. **A helyesbítő számla száma kötelező**, amíg nincs beírva, a tétel hiányos. Ha az eredeti
+    számla még piszkozat vagy nincs meg, Teendő lesz;
+  - **visszavonás (sztornó v3):** leltáreltérésre és visszárura is (érintetlen piszkozat törlése, egyébként
+    sztornó vagy Teendő).
+
+  **Minden piszkozat, mindig jóváhagyással**, automatikus módban is. A csoportos jóváhagyásban új fajták:
+  **Leltár, Pénztár, Visszáru**. Csoportosan csak a hiánytalan tétel könyvelhető; ezt a szerver is
+  ellenőrzi, nem csak a felület. Az új számla-hozzárendelések (pénztár, a leltáreltérés két ellenszámlája)
+  a *Beállítások → Integráció* oldalon állíthatók. Korábban összekapcsolt cégnél ezek üresek, és amíg nincsenek
+  megadva, az érintett tételek hiányosak.
 
   Ugyanaz az esemény többször megérkezve is egyszer hat.
 - **„Csak piszkozat” bevezető mód:** az összekapcsoláskor magától bekapcsol. Egy hónap után Teendő

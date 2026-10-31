@@ -62,6 +62,9 @@ const ACCOUNT_LABELS = {
   inputVatAccountId: "Előzetesen felszámított áfa (466)",
   outputVatAccountId: "Fizetendő áfa (467)",
   revenueAccountId: "Árbevétel (911)",
+  cashAccountId: "Pénztár (381)",
+  inventoryLossAccountId: "Leltári hiány és selejt ellenszámlája (pl. 869)",
+  inventoryGainAccountId: "Leltári többlet ellenszámlája (pl. 969)",
 } as const;
 type AccountKey = keyof typeof ACCOUNT_LABELS;
 
@@ -101,6 +104,22 @@ async function sourceRecords(db: Executor, companyId: string, e: EventEnvelope) 
         eq(integrationRecords.sourceModule, e.source.module),
         eq(integrationRecords.sourceRecordType, e.source.recordType),
         eq(integrationRecords.sourceRecordId, e.source.recordId),
+      ),
+    )
+    .orderBy(asc(integrationRecords.createdAt));
+}
+
+/** A Készlet egy rekordjához (típus + azonosító) tartozó tételek, bármelyik eseményből jöttek. */
+async function recordsOf(db: Executor, companyId: string, recordType: string, recordId: string) {
+  return db
+    .select()
+    .from(integrationRecords)
+    .where(
+      and(
+        eq(integrationRecords.companyId, companyId),
+        eq(integrationRecords.sourceModule, "keszlet"),
+        eq(integrationRecords.sourceRecordType, recordType),
+        eq(integrationRecords.sourceRecordId, recordId),
       ),
     )
     .orderBy(asc(integrationRecords.createdAt));
@@ -161,8 +180,14 @@ type Purchase = {
   totals: { net: number; vat: number; gross: number };
 };
 
-/** KK1: Készlet-beszerzés → szállítói számla piszkozata (T 261 / T 466 / K 454). */
-async function purchase(ctx: Ctx, p: Purchase): Promise<InboundResult> {
+/** A szállítói számla összegei, ha nem egyszerűen nettó / áfa / bruttó (beszerzés v3). */
+type PurchaseAmounts = { inventory: number; inputVat: number };
+
+/**
+ * KK1: Készlet-beszerzés → szállítói számla piszkozata (T 261 / T 466 / K 454). `reviewNotes`: amit embernek kell
+ * átnéznie; addig a tétel csoportosan nem hagyható jóvá (egyenként, a bizonylaton igen).
+ */
+async function purchase(ctx: Ctx, p: Purchase, opts: { amounts?: PurchaseAmounts; reviewNotes?: string[] } = {}): Promise<InboundResult> {
   const { tx, companyId } = ctx;
   const partner = await partnerByTax(tx, companyId, p.supplier?.taxNumber);
   const problems: string[] = [];
@@ -190,6 +215,10 @@ async function purchase(ctx: Ctx, p: Purchase): Promise<InboundResult> {
 
   const { ids, problems: accProblems } = await mappedAccounts(ctx, ["inventoryAccountId", "inputVatAccountId", "payableAccountId"]);
   problems.push(...accProblems);
+  const reviewNotes = opts.reviewNotes ?? [];
+  problems.push(...reviewNotes);
+  const inventoryAmount = opts.amounts?.inventory ?? p.totals.net;
+  const inputVat = opts.amounts?.inputVat ?? p.totals.vat;
   if (!p.invoiceNumber) problems.push("A szállító számlaszáma hiányzik.");
   if (!p.fulfillmentDate) problems.push("A teljesítés dátuma hiányzik (a számláról írja be).");
 
@@ -210,8 +239,8 @@ async function purchase(ctx: Ctx, p: Purchase): Promise<InboundResult> {
     fulfillmentDate: p.fulfillmentDate,
     accountingDate,
     lines: [
-      { accountId: ids.inventoryAccountId ?? null, side: "D", amount: p.totals.net },
-      ...(p.totals.vat ? [{ accountId: ids.inputVatAccountId ?? null, side: "D", amount: p.totals.vat }] : []),
+      { accountId: ids.inventoryAccountId ?? null, side: "D", amount: inventoryAmount },
+      ...(inputVat ? [{ accountId: ids.inputVatAccountId ?? null, side: "D", amount: inputVat }] : []),
       { accountId: ids.payableAccountId ?? null, side: "C", amount: p.totals.gross },
     ],
   });
@@ -225,7 +254,7 @@ async function purchase(ctx: Ctx, p: Purchase): Promise<InboundResult> {
   }
   const docId = created.value;
   await saveStockLines(tx, docId, p.lines);
-  await addRecord(ctx, "PURCHASE", docId, { receivedDate: p.receivedDate, invoiceDate: p.invoiceDate, needsDateChoice });
+  await addRecord(ctx, "PURCHASE", docId, { receivedDate: p.receivedDate, invoiceDate: p.invoiceDate, needsDateChoice, reviewNote: reviewNotes.join(" ") || null });
   if (needsDateChoice) problems.push(`Válassza ki a könyvelés dátumát: bevételezés (${formatDateHu(p.receivedDate)})${p.invoiceDate ? ` vagy számla (${formatDateHu(p.invoiceDate)})` : ""}.`);
 
   // Automatikus mód: csak ha minden egyértelmű, és a beszerzés dátumszabálya nem „kérdezze”.
@@ -314,13 +343,19 @@ async function sale(ctx: Ctx, p: Sale): Promise<InboundResult> {
   return result;
 }
 
-/** KK4: a Készletben visszavontak egy beszerzést vagy eladást. */
-async function withdrawal(ctx: Ctx, p: { movementKind: "PURCHASE" | "SALE"; movementId: string; date: string; reason: string }): Promise<InboundResult> {
+const MOZGAS_FAJTA: Record<"PURCHASE" | "SALE" | "INVENTORY" | "RETURN", string> = { PURCHASE: "beszerzés", SALE: "eladás", INVENTORY: "leltáreltérés", RETURN: "visszáru" };
+
+/**
+ * KK4: a Készletben visszavontak egy mozgást. v2: beszerzés vagy eladás (a rekord maga a mozgás); v3: leltáreltérés
+ * és visszáru is - a visszárut a saját azonosítója (a rekordon belül) azonosítja.
+ */
+async function withdrawal(ctx: Ctx, p: { movementKind: keyof typeof MOZGAS_FAJTA; movementId: string; date: string; reason: string }, byMovement = false): Promise<InboundResult> {
   const { tx, companyId } = ctx;
-  const records = (await sourceRecords(tx, companyId, ctx.event)).filter((r) => r.kind !== "REVERSAL");
+  const all = byMovement ? await recordsOf(tx, companyId, ctx.event.source.recordType, p.movementId) : await sourceRecords(tx, companyId, ctx.event);
+  const records = all.filter((r) => r.kind !== "REVERSAL");
   if (!records.length) {
-    const key = `visszavonas:${ctx.event.source.recordId}`;
-    const title = `A Készletben visszavontak egy mozgást (${p.movementKind === "SALE" ? "eladás" : "beszerzés"}, ${formatDateHu(p.date)}), de a Könyvelőben nincs hozzá tétel. Nézze át, kell-e tenni valamit.`;
+    const key = `visszavonas:${p.movementId}`;
+    const title = `A Készletben visszavontak egy mozgást (${MOZGAS_FAJTA[p.movementKind]}, ${formatDateHu(p.date)}), de a Könyvelőben nincs hozzá tétel. Nézze át, kell-e tenni valamit.`;
     await openTodo(tx, companyId, { key, kind: "SOURCE_WITHDRAWN", title, detail: `Ok: ${p.reason}`, hubKey: key });
     return { outcome: "TODO", todo: { key, title } };
   }
@@ -523,6 +558,289 @@ async function stockApproved(ctx: Ctx, p: StockApproval): Promise<InboundResult>
   return { outcome: "APPLIED", target: docTarget(doc.id, doc.serialNumber ?? "Bizonylat") };
 }
 
+// ---------- I3 6. lépés: beszerzés v3, leltár, napi pénztárzárás, visszáru (TERV.md F15.3, F15.5, F15.8) ----------
+
+type PurchaseV3 = Omit<Purchase, "lines"> & {
+  originalCurrency: { code: string; rate: number } | null;
+  lines: Array<StockLine & { vatReclaimable: boolean }>;
+  shipping: { netAmount: number; vatRate: number | null; vatAmount: number; vatReclaimable: boolean; onSupplierInvoice: boolean | null } | null;
+};
+
+/**
+ * Beszerzés v3: a nem visszaigényelhető áfa és a számlán lévő szállítási díj a bekerülési érték része (261). Ami nem
+ * egyértelmű, azt nem találgatjuk ki: a devizás számla és a „nem tudni, a számlán van-e” szállítási díj átnézendő
+ * (csoportosan addig nem hagyható jóvá), a külön számlás szállítási díjról Teendő szól.
+ */
+async function purchaseV3(ctx: Ctx, p: PurchaseV3): Promise<InboundResult> {
+  const ship = p.shipping;
+  const onInvoice = ship?.onSupplierInvoice === true ? ship : null;
+  const parts = [...p.lines, ...(onInvoice ? [onInvoice] : [])];
+  const inputVat = parts.filter((l) => l.vatReclaimable).reduce((s, l) => s + l.vatAmount, 0);
+  const inventory = p.totals.net + parts.filter((l) => !l.vatReclaimable).reduce((s, l) => s + l.vatAmount, 0);
+  const reviewNotes: string[] = [];
+  if (p.originalCurrency) {
+    reviewNotes.push(
+      `Devizás beszerzés (${p.originalCurrency.code}, a Készletben használt árfolyam: ${p.originalCurrency.rate}): a forintösszegek ebből számoltak; ellenőrizze a számla devizaösszegét és a könyvelési árfolyamot.`,
+    );
+  }
+  if (ship && ship.onSupplierInvoice === null) {
+    reviewNotes.push(`A Készletben nem tudták, hogy a szállítási díj (${formatHuf(ship.netAmount)} + áfa) a szállító számláján van-e: nézze meg a számlán, és ha rajta van, vegye fel a 261-re.`);
+  }
+  const result = await purchase(ctx, p, { amounts: { inventory, inputVat }, reviewNotes });
+  if (ship && ship.onSupplierInvoice !== true) {
+    const key = `szallitas:${ctx.event.source.recordId}`;
+    const title =
+      ship.onSupplierInvoice === false
+        ? `A Készlet-beszerzés szállítási díja (${formatHuf(ship.netAmount)} + áfa) külön (fuvarozói) számlán van: azt a számlát külön rögzítse; a bekerülési értékbe (261) tartozik.`
+        : `A Készlet-beszerzés szállítási díjáról (${formatHuf(ship.netAmount)} + áfa) nem tudni, melyik számlán van: nézze át, és rögzítse a megfelelő számlán.`;
+    await openTodo(ctx.tx, ctx.companyId, { key, kind: "MISSING_DATA", title, hubKey: key });
+  }
+  return result;
+}
+
+/** Piszkozat egy jóváhagyandó Teendővel; ha nem készülhet el, csak Teendő (az okkal). Mindig jóváhagyással. */
+async function draftForApproval(
+  ctx: Ctx,
+  d: {
+    input: unknown;
+    key: string;
+    kind: "INVENTORY_APPROVAL" | "CASH_APPROVAL" | "RETURN_APPROVAL" | "COGS_APPROVAL";
+    title: string;
+    failTitle: string;
+    record: IntegrationRecordKind;
+    recordId?: string;
+    problems?: string[];
+    detail?: string;
+  },
+): Promise<{ docId: string | null; todo: NonNullable<InboundResult["todo"]> }> {
+  const { tx, companyId } = ctx;
+  const created = await attempt(tx, (sp) => createDocument(sp, companyId, SYSTEM_USER, IP, documentInputSchema.parse(d.input), "INTEGRATION"));
+  const extra = d.recordId ? { sourceRecordId: d.recordId } : {};
+  if (!created.ok) {
+    const title = `${d.failTitle}: ${created.message}`.slice(0, 300);
+    await openTodo(tx, companyId, { key: d.key, kind: "MISSING_DATA", title, hubKey: d.key });
+    await addRecord(ctx, d.record, null, extra);
+    return { docId: null, todo: { key: d.key, title } };
+  }
+  const docId = created.value;
+  await addRecord(ctx, d.record, docId, extra);
+  const problems = d.problems ?? [];
+  const detail = [d.detail, ...problems].filter(Boolean).join("\n") || null;
+  await openTodo(tx, companyId, { key: d.key, kind: d.kind, title: d.title, detail, documentId: docId, hubKey: d.key });
+  if (problems.length) await openTodo(tx, companyId, { key: `hiany:${docId}`, kind: "MISSING_DATA", title: `Hiányzó adat a Készletből jött piszkozaton: ${problems[0]}`, detail: problems.join("\n"), documentId: docId });
+  return { docId, todo: { key: d.key, title: d.title, ...(detail ? { detail: detail.slice(0, 2000) } : {}), url: `/konyveles/${docId}` } };
+}
+
+const LELTAR_SZOVEG = { SHORTAGE: "Leltári hiány", SURPLUS: "Leltári többlet", SCRAP: "Selejt" } as const;
+
+/**
+ * KK7: leltáreltérés → vegyes bizonylat piszkozata, jóváhagyással. Hiány és selejt: T ellenszámla (869) / K 261;
+ * többlet: T 261 / K ellenszámla (969), a Készlet szerinti bekerülési értéken. Ha az ellenszámla nincs beállítva,
+ * a tétel hiányos (a jóváhagyó választja).
+ */
+async function inventoryDiff(
+  ctx: Ctx,
+  p: { movementId: string; date: string; kind: keyof typeof LELTAR_SZOVEG; productName: string; quantity: number; unit: string | null; location: { name: string } | null; value: number; note: string | null },
+): Promise<InboundResult> {
+  if (p.value === 0) return { outcome: "APPLIED" };
+  const gain = p.kind === "SURPLUS";
+  const { ids, problems } = await mappedAccounts(ctx, ["inventoryAccountId", gain ? "inventoryGainAccountId" : "inventoryLossAccountId"]);
+  const counter = gain ? ids.inventoryGainAccountId : ids.inventoryLossAccountId;
+  const label = `${LELTAR_SZOVEG[p.kind]} – ${p.productName}, ${p.quantity}${p.unit ? ` ${p.unit}` : ""}${p.location ? ` (${p.location.name})` : ""}`;
+  const r = await draftForApproval(ctx, {
+    input: {
+      docType: "VEGY",
+      description: label.slice(0, 500),
+      issueDate: p.date,
+      accountingDate: p.date,
+      lines: gain
+        ? [{ accountId: ids.inventoryAccountId ?? null, side: "D", amount: p.value }, { accountId: counter ?? null, side: "C", amount: p.value }]
+        : [{ accountId: counter ?? null, side: "D", amount: p.value }, { accountId: ids.inventoryAccountId ?? null, side: "C", amount: p.value }],
+    },
+    key: `leltar:${p.movementId}`,
+    kind: "INVENTORY_APPROVAL",
+    title: `${label}: ${formatHuf(p.value)} jóváhagyásra vár`.slice(0, 300),
+    failTitle: `A Készlet leltáreltéréséből (${label}) nem készülhetett piszkozat`,
+    record: "INVENTORY",
+    problems,
+    detail: p.note ? `A Készlet megjegyzése: ${p.note}` : undefined,
+  });
+  return { outcome: "TODO", ...(r.docId ? { target: docTarget(r.docId, "Leltár-piszkozat") } : {}), todo: r.todo };
+}
+
+type RateRow = { vatRate: number | null; net: number; vat: number; gross: number };
+
+/**
+ * KK8: napi pénztárzárás → pénztárbevételi (több visszavételnél pénztárkiadási) piszkozat, jóváhagyással: T pénztár /
+ * K árbevétel kulcsonként / K fizetendő áfa. A pénztár negatív egyenleg- és pénztármaximum-szabálya érvényes (a
+ * könyvelés ellenőrzi). Az érintett készpénzes eladások „árbevétel hiányzik” Teendői ezzel lezárulnak.
+ */
+async function cashClosing(
+  ctx: Ctx,
+  p: { closingId: string; date: string; location: { name: string }; sales: RateRow[]; returns: RateRow[]; saleIds: string[]; returnIds: string[]; totals: { net: number; vat: number; gross: number } },
+): Promise<InboundResult> {
+  const { tx, companyId } = ctx;
+  for (const id of p.saleIds) await resolveTodo(tx, companyId, `szamla:${id}`, SYSTEM_USER_ID);
+  if (p.totals.gross === 0 && p.totals.net === 0) return { outcome: "APPLIED" };
+  const { ids, problems } = await mappedAccounts(ctx, ["cashAccountId", "revenueAccountId", "outputVatAccountId"]);
+  // Kulcsonként: eladás mínusz visszavétel.
+  const byRate = new Map<string, { rate: number | null; net: number; vat: number }>();
+  for (const [rows, sign] of [[p.sales, 1], [p.returns, -1]] as const) {
+    for (const r of rows) {
+      const k = String(r.vatRate);
+      const cur = byRate.get(k) ?? { rate: r.vatRate, net: 0, vat: 0 };
+      cur.net += sign * r.net;
+      cur.vat += sign * r.vat;
+      byRate.set(k, cur);
+    }
+  }
+  const lines: Array<{ accountId: string | null; side: "D" | "C"; amount: number; description?: string }> = [];
+  const income = p.totals.gross >= 0;
+  lines.push({ accountId: ids.cashAccountId ?? null, side: income ? "D" : "C", amount: Math.abs(p.totals.gross) });
+  for (const r of [...byRate.values()].sort((a, b) => (a.rate ?? -1) - (b.rate ?? -1))) {
+    if (r.net !== 0) lines.push({ accountId: ids.revenueAccountId ?? null, side: r.net > 0 ? "C" : "D", amount: Math.abs(r.net), description: `Árbevétel ${r.rate === null ? "(áfa nélkül)" : `${r.rate}%`}` });
+  }
+  if (p.totals.vat !== 0) lines.push({ accountId: ids.outputVatAccountId ?? null, side: p.totals.vat > 0 ? "C" : "D", amount: Math.abs(p.totals.vat) });
+  const label = `Napi pénztárzárás – ${p.location.name}, ${formatDateHu(p.date)} (${p.saleIds.length} eladás${p.returnIds.length ? `, ${p.returnIds.length} visszavétel` : ""})`;
+  const r = await draftForApproval(ctx, {
+    input: { docType: income ? "PB" : "PK", description: label.slice(0, 500), issueDate: p.date, fulfillmentDate: p.date, accountingDate: p.date, lines },
+    key: `penztar:${p.closingId}`,
+    kind: "CASH_APPROVAL",
+    title: `${label}: ${formatHuf(Math.abs(p.totals.gross))} jóváhagyásra vár`.slice(0, 300),
+    failTitle: `A Készlet napi zárásából (${label}) nem készülhetett pénztárbizonylat`,
+    record: "CASH",
+    problems,
+  });
+  return { outcome: "TODO", ...(r.docId ? { target: docTarget(r.docId, "Pénztár-piszkozat") } : {}), todo: r.todo };
+}
+
+/** KK8: egy elküldött napi zárás napjára utólag mozgás került. Magától nem javít: Teendő. */
+async function closingModified(ctx: Ctx, p: { closingId: string; date: string; location: { name: string }; movementIds: string[] }): Promise<InboundResult> {
+  const { tx, companyId } = ctx;
+  const [cash] = (await sourceRecords(tx, companyId, ctx.event)).filter((r) => r.kind === "CASH" && r.documentId);
+  const key = `zaras-modosult:${p.closingId}:${ctx.event.id}`;
+  const title = `A(z) ${formatDateHu(p.date)} napi zárás (${p.location.name}) utólag módosult a Készletben: nézze át a pénztárbizonylatot, és ha kell, javítsa vagy helyesbítse.`;
+  await openTodo(tx, companyId, { key, kind: "SOURCE_CHANGED", title, detail: `Érintett mozgások: ${p.movementIds.length} db.`, documentId: cash?.documentId ?? null, hubKey: key });
+  return { outcome: "TODO", todo: { key, title, ...(cash?.documentId ? { url: `/konyveles/${cash.documentId}` } : {}) } };
+}
+
+type Return = {
+  returnId: string;
+  kind: "CUSTOMER_RETURN" | "SUPPLIER_RETURN";
+  original: { movementKind: "SALE" | "PURCHASE"; movementId: string };
+  date: string;
+  partner: { name: string; taxNumber?: string } | null;
+  cash: boolean;
+  reason: string;
+  lines: StockLine[];
+  totals: { net: number; vat: number; gross: number };
+  vatReclaimable: boolean | null;
+  costOfGoods: number | null;
+};
+
+/**
+ * F15.8: részleges visszáru → helyesbítő (HELY) piszkozat az eredeti számlára hivatkozva, mindig jóváhagyással; a
+ * helyesbítő számla száma kötelező (amíg nincs beírva, a tétel hiányos). Vevői visszavételnél mellé az ELÁBÉ
+ * csökkentése (T 261 / K 814). Ami nem egyértelmű (nincs meg az eredeti számla, az eredeti még piszkozat), az Teendő.
+ */
+async function customerOrSupplierReturn(ctx: Ctx, p: Return): Promise<InboundResult> {
+  const { tx, companyId } = ctx;
+  const todos: Array<NonNullable<InboundResult["todo"]>> = [];
+  let target: InboundResult["target"] | undefined;
+  const orig = await recordsOf(tx, companyId, ctx.event.source.recordType, p.original.movementId);
+  const desc = `${p.kind === "CUSTOMER_RETURN" ? "Vevői visszavétel" : "Szállítói visszaküldés"}: ${p.lines.map((l) => `${l.productName} ${l.quantity}${l.unit ? ` ${l.unit}` : ""}`).join(", ")}${p.reason ? ` (${p.reason})` : ""}`.slice(0, 500);
+
+  if (p.kind === "CUSTOMER_RETURN" && (p.costOfGoods ?? 0) > 0) {
+    const { ids, problems } = await mappedAccounts(ctx, ["cogsAccountId", "inventoryAccountId"]);
+    const r = await draftForApproval(ctx, {
+      input: {
+        docType: "VEGY",
+        description: `ELÁBÉ csökkentése – ${desc}`.slice(0, 500),
+        issueDate: p.date,
+        accountingDate: p.date,
+        lines: [{ accountId: ids.inventoryAccountId ?? null, side: "D", amount: p.costOfGoods }, { accountId: ids.cogsAccountId ?? null, side: "C", amount: p.costOfGoods }],
+      },
+      key: `elabe:${p.returnId}`,
+      kind: "COGS_APPROVAL",
+      title: `ELÁBÉ csökkentése jóváhagyásra vár (visszavétel, ${formatDateHu(p.date)}): ${formatHuf(p.costOfGoods!)}`,
+      failTitle: "A visszavétel ELÁBÉ-csökkentéséből nem készülhetett piszkozat",
+      record: "COGS",
+      recordId: p.returnId,
+      problems,
+    });
+    todos.push(r.todo);
+    if (r.docId) target = docTarget(r.docId, "ELÁBÉ-csökkentés");
+  }
+
+  // A készpénzes (számla nélküli) eladás visszavétele a napi pénztárzárásban szerepel; ott nincs mit helyesbíteni.
+  if (!(p.kind === "CUSTOMER_RETURN" && p.cash)) {
+    const linkKinds = p.kind === "CUSTOMER_RETURN" ? ["SALE_LINK"] : ["PURCHASE", "PURCHASE_LINK"];
+    const candidates: Array<typeof documents.$inferSelect> = [];
+    for (const r of orig.filter((x) => linkKinds.includes(x.kind) && x.documentId)) {
+      const [doc] = await tx.select().from(documents).where(eq(documents.id, r.documentId!));
+      if (doc && !candidates.some((c) => c.id === doc.id)) candidates.push(doc);
+    }
+    const posted = candidates.filter((d) => d.status === "POSTED");
+    const invoice = p.kind === "CUSTOMER_RETURN" ? "vevőszámla" : "szállítói számla";
+    const invoiceHoz = p.kind === "CUSTOMER_RETURN" ? "vevőszámlához" : "szállítói számlához";
+    if (posted.length !== 1) {
+      const key = `visszaru:${p.returnId}`;
+      const title =
+        candidates.length && !posted.length
+          ? `A Készletben ${p.kind === "CUSTOMER_RETURN" ? "visszavétel" : "visszaküldés"} történt (${formatDateHu(p.date)}, ${formatHuf(p.totals.gross)}), de az eredeti ${invoice} még piszkozat: a mennyiséget ott javítsa (helyesbítő nem kell).`
+          : posted.length > 1
+            ? `A Készlet visszárujához (${formatDateHu(p.date)}, ${formatHuf(p.totals.gross)}) több ${invoice} is illik; a helyesbítőt kézzel rögzítse a megfelelőhöz.`
+            : `A Készlet visszárujához (${formatDateHu(p.date)}, ${formatHuf(p.totals.gross)}) a helyesbítő a ${invoiceHoz} kell, de az nincs meg a Könyvelőben: rögzítse a számlát és a helyesbítőt.`;
+      await openTodo(tx, companyId, { key, kind: candidates.length && !posted.length ? "SOURCE_CHANGED" : "MISSING_DATA", title, detail: `Ok: ${p.reason || "—"}`, hubKey: key });
+      todos.push({ key, title });
+    } else {
+      const orig = posted[0]!;
+      const { ids, problems } = await mappedAccounts(
+        ctx,
+        p.kind === "CUSTOMER_RETURN" ? ["revenueAccountId", "outputVatAccountId", "receivableAccountId"] : ["payableAccountId", "inventoryAccountId", "inputVatAccountId"],
+      );
+      const lines =
+        p.kind === "CUSTOMER_RETURN"
+          ? [
+              { accountId: ids.revenueAccountId ?? null, side: "D", amount: p.totals.net },
+              ...(p.totals.vat ? [{ accountId: ids.outputVatAccountId ?? null, side: "D", amount: p.totals.vat }] : []),
+              { accountId: ids.receivableAccountId ?? null, side: "C", amount: p.totals.gross, partnerId: orig.partnerId },
+            ]
+          : [
+              { accountId: ids.payableAccountId ?? null, side: "D", amount: p.totals.gross, partnerId: orig.partnerId },
+              // Ha az eredeti áfa nem volt visszaigényelhető, a bekerülési érték része volt: az is a 261-ről jön le.
+              { accountId: ids.inventoryAccountId ?? null, side: "C", amount: p.vatReclaimable === false ? p.totals.gross : p.totals.net },
+              ...(p.totals.vat && p.vatReclaimable !== false ? [{ accountId: ids.inputVatAccountId ?? null, side: "C", amount: p.totals.vat }] : []),
+            ];
+      const r = await draftForApproval(ctx, {
+        input: {
+          docType: "HELY",
+          correctsDocumentId: orig.id,
+          partnerId: orig.partnerId,
+          externalNumber: null,
+          description: desc,
+          issueDate: p.date,
+          fulfillmentDate: p.date,
+          accountingDate: p.date,
+          lines,
+        },
+        key: `visszaru:${p.returnId}`,
+        kind: "RETURN_APPROVAL",
+        title: `Visszáru-helyesbítő jóváhagyásra vár: ${orig.serialNumber} – ${formatHuf(p.totals.gross)} (${formatDateHu(p.date)})`,
+        failTitle: `A Készlet visszárujából (${orig.serialNumber}) nem készülhetett helyesbítő piszkozat`,
+        record: "RETURN",
+        recordId: p.returnId,
+        problems,
+        detail: `Írja be a helyesbítő számla számát (${p.kind === "CUSTOMER_RETURN" ? "a vevőnek kiállított" : "a szállítótól kapott"} helyesbítőét); addig a tétel hiányos.`,
+      });
+      todos.push(r.todo);
+      if (r.docId) target = docTarget(r.docId, "Helyesbítő-piszkozat");
+    }
+  }
+  if (!todos.length) return { outcome: "APPLIED" };
+  return { outcome: "TODO", ...(target ? { target } : {}), todo: { ...todos[0]!, ...(todos.length > 1 ? { detail: `${todos.length} teendő: ${todos.map((t) => t.title).join(" | ")}`.slice(0, 2000) } : {}) } };
+}
+
 /** A Készlet termékei a termékkérdéshez (KK3); csak olvasható másolat. */
 async function product(ctx: Ctx, p: { productId: string; name: string; sku: string | null; unit: string | null; vatRate: number | null; active: boolean }): Promise<InboundResult> {
   await ctx.tx
@@ -585,6 +903,18 @@ export async function applyInbound(tx: Tx, companyId: string, event: EventEnvelo
       return withdrawal(ctx, payload);
     case "keszlet.mozgas.jovahagyva@1":
       return stockApproved(ctx, payload);
+    case "keszlet.beszerzes.veglegesitve@3":
+      return purchaseV3(ctx, payload);
+    case "keszlet.leltar.elteres@1":
+      return inventoryDiff(ctx, payload);
+    case "keszlet.napi_zaras.elkuldve@1":
+      return cashClosing(ctx, payload);
+    case "keszlet.napi_zaras.modosult@1":
+      return closingModified(ctx, payload);
+    case "keszlet.visszaru.veglegesitve@1":
+      return customerOrSupplierReturn(ctx, payload);
+    case "keszlet.mozgas.sztornozva@3":
+      return withdrawal(ctx, payload, true);
     case "keszlet.termek.valtozott@1":
       return product(ctx, payload);
     case "torzs.partner.valtozott@1":

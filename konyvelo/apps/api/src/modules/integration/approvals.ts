@@ -8,6 +8,7 @@ import { AppError, forbidden, parseBody } from "../../core/errors";
 import { accounts, auditLog, documents, integrationRecords, integrationTodos, journalLines, partners, SYSTEM_USER_ID } from "../../core/schema";
 import { postDocument, reverseDocument } from "../documents";
 import { chooseDate } from "./dates";
+import { draftFingerprint } from "./inbound";
 
 /**
  * Csoportos átnézés és jóváhagyás (TERV.md F14.8). A Készletből érkező piszkozatok (beszerzés, ELÁBÉ) és
@@ -16,7 +17,14 @@ import { chooseDate } from "./dates";
  * ellenőrzése most elfogadna: ezt ugyanazzal a könyvelési lépéssel próbáljuk ki, visszagörgetve.
  */
 
-const KIND_OF_TODO: Record<string, ApprovalKind> = { PURCHASE_APPROVAL: "PURCHASE", COGS_APPROVAL: "COGS", REVERSAL_APPROVAL: "REVERSAL" };
+const KIND_OF_TODO: Record<string, ApprovalKind> = {
+  PURCHASE_APPROVAL: "PURCHASE",
+  COGS_APPROVAL: "COGS",
+  INVENTORY_APPROVAL: "INVENTORY",
+  CASH_APPROVAL: "CASH",
+  RETURN_APPROVAL: "RETURN",
+  REVERSAL_APPROVAL: "REVERSAL",
+};
 
 class DryRun extends Error {}
 
@@ -61,6 +69,18 @@ async function purchaseRecord(db: Executor, documentId: string) {
   return r ?? null;
 }
 
+/**
+ * Amit embernek kell átnéznie (pl. devizás beszerzés): amíg a piszkozat változatlan, csoportosan nem hagyható jóvá.
+ * Ha a bizonylatot átnézték és javították, a megjegyzés okafogyott; egyenként, a bizonylaton mindig könyvelhető.
+ */
+async function reviewNotes(tx: Tx, documentId: string): Promise<string[]> {
+  const recs = await tx.select().from(integrationRecords).where(eq(integrationRecords.documentId, documentId));
+  const notes = recs.filter((r) => r.reviewNote);
+  if (!notes.length) return [];
+  const now = await draftFingerprint(tx, documentId);
+  return notes.filter((r) => r.draftFingerprint === now).map((r) => `${r.reviewNote} (Egyenként, a bizonylaton jóváhagyható.)`);
+}
+
 /** Egy tétel áttekintése: a lényeg és az, hogy most könyvelhető-e. */
 async function item(tx: Tx, companyId: string, e: QueueEntry, user: AuthUser): Promise<ApprovalItemDto | null> {
   const [doc] = await tx.select().from(documents).where(and(eq(documents.companyId, companyId), eq(documents.id, e.documentId)));
@@ -87,6 +107,9 @@ async function item(tx: Tx, companyId: string, e: QueueEntry, user: AuthUser): P
       const rec = e.kind === "PURCHASE" ? await purchaseRecord(tx, doc.id) : null;
       if (rec?.needsDateChoice) dateChoice = { receivedDate: rec.receivedDate, invoiceDate: rec.invoiceDate };
       problems = await dryRun(tx, (sp) => postDocument(sp, companyId, doc.id, user, "proba"));
+      // A helyesbítő számla számát a program nem találja ki (F15.8).
+      if (e.kind === "RETURN" && !doc.externalNumber?.trim()) problems.push("Írja be a helyesbítő számla számát (a bizonylaton).");
+      problems.push(...(await reviewNotes(tx, doc.id)));
     }
   }
   return {
@@ -129,7 +152,7 @@ export async function approvalGroups(db: Db, companyId: string, user: AuthUser):
     if (it.complete) g.completeCount++;
     groups.set(key, g);
   }
-  const order: Record<ApprovalKind, number> = { PURCHASE: 0, COGS: 1, REVERSAL: 2 };
+  const order: Record<ApprovalKind, number> = { PURCHASE: 0, COGS: 1, INVENTORY: 2, CASH: 3, RETURN: 4, REVERSAL: 5 };
   return [...groups.values()].sort((a, b) => order[a.kind] - order[b.kind] || a.date.localeCompare(b.date));
 }
 
@@ -175,6 +198,9 @@ export async function approvalsRoutes(app: FastifyInstance, db: Db) {
           // Mentőpont tételenként: a hibás tétel visszagörgetődik, a többi megmarad.
           const serial = await outer.transaction(async (tx) => {
             const t = tx as Tx;
+            // Csak hiánytalan tétel könyvelhető csoportosan - a szerver is ellenőrzi, nem csak a felület.
+            const check = await item(t, companyId, e, user);
+            if (!check || !check.complete) throw new AppError(422, "INCOMPLETE", `Nem hiánytalan: ${(check?.problems ?? ["a tétel nem található"]).join(" ")}`);
             if (e.kind === "REVERSAL") {
               const rec = await reversalRecord(t, documentId);
               const id = await reverseDocument(t, companyId, documentId, user, request.ip, { accountingDate: rec!.receivedDate!, reason: `A forrás visszavonva: ${rec!.sourceLabel ?? ""}`.trim() }, rec!.eventId);
