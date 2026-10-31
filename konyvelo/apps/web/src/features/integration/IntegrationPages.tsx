@@ -280,7 +280,7 @@ function ReconciliationCard({ companyId }: { companyId: string }) {
       ) : (
         <>
           <p className="muted small">
-            Legutóbbi ellenőrzés: {formatDateTimeHu(report.at)}. Készletérték: {formatDateHu(report.asOf)}; ELÁBÉ-időszak: {formatDateHu(report.from)} – {formatDateHu(report.to)}.
+            Legutóbbi ellenőrzés: {formatDateTimeHu(report.at)} · készletérték napja: {formatDateHu(report.asOf)} · ELÁBÉ-időszak: {formatDateHu(report.from)} – {formatDateHu(report.to)}
           </p>
           <ul className="reconcile-list">
             {report.results.map((r) => (
