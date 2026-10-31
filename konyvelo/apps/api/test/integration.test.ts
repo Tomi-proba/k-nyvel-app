@@ -116,6 +116,12 @@ class FakeHub implements HubClient {
   async links() {
     return [];
   }
+  async reconcileNow(): Promise<never> {
+    throw new Error("az egyeztetést a reconcile.test.ts próbálja ki");
+  }
+  async acceptBaseline(): Promise<never> {
+    throw new Error("az egyeztetést a reconcile.test.ts próbálja ki");
+  }
 }
 
 beforeAll(async () => {

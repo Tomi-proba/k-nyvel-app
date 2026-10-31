@@ -1,10 +1,24 @@
 import { createHash, randomInt } from "node:crypto";
 import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { addDays, todayIso } from "@konyvelo/domain";
-import { createHubClient, INBOUND_PATH, LINK_PATH, MODULE_LABELS, registryOf, validateEvent, verifyHubRequest, type InboundResult, type Module } from "@konyvelo/esemenyek";
+import {
+  createHubClient,
+  HubError,
+  INBOUND_PATH,
+  LINK_PATH,
+  MODULE_LABELS,
+  RECONCILE_PATH,
+  RECONCILE_RESULT_PATH,
+  registryOf,
+  validateEvent,
+  verifyHubRequest,
+  type InboundResult,
+  type Module,
+} from "@konyvelo/esemenyek";
 import {
   INTEGRATION_ACCOUNT_KEYS,
   INTEGRATION_ACCOUNT_LABELS,
+  ROLE_LABELS,
   integrationSettingsSchema,
   type DocumentIntegrationDto,
   type IntegrationStatusDto,
@@ -36,6 +50,7 @@ import { approvalsRoutes } from "./approvals";
 import { chooseDate } from "./dates";
 import { applyInbound } from "./inbound";
 import { refreshMappingTodo } from "./mapping";
+import { answerReconcile, latestReport, storeReport } from "./reconcile";
 import { openIntegrationTodos, resolveTodo } from "./todos";
 
 /**
@@ -179,6 +194,12 @@ function hubRoutes(app: FastifyInstance, db: Db, secret: string | null) {
         return result;
       });
     });
+
+    /** Egyeztetés (F16): a Könyvelő saját számai a kért napra és időszakra. Csak összegek és bizonylatszámok. */
+    scope.post(RECONCILE_PATH, async (request) => answerReconcile(db, json(request.body)));
+
+    /** Az egyeztetés eredménye: eltároljuk, és a nem rendben lévő ellenőrzésből Teendő lesz. */
+    scope.post(RECONCILE_RESULT_PATH, async (request) => db.transaction(async (tx) => storeReport(tx, json(request.body))));
   });
 }
 
@@ -202,6 +223,8 @@ export const integrationModule: AppModule = {
   async register(app, { db, config }) {
     await hubRoutes(app, db, config.hub?.secret ?? null);
     const hub = config.hub ? createHubClient({ url: config.hub.url, module: "konyvelo", secret: config.hub.secret, timeoutMs: 5_000 }) : null;
+    // Az egyeztetés a központban mindkét modult megkérdezi: ehhez több idő kell.
+    const reconcileHub = config.hub ? createHubClient({ url: config.hub.url, module: "konyvelo", secret: config.hub.secret, timeoutMs: 120_000 }) : null;
     const base = "/api/companies/:companyId/integration";
     type P = { Params: { companyId: string } };
 
@@ -459,9 +482,72 @@ export const integrationModule: AppModule = {
       return { ok: true };
     });
 
+    // ---------- Egyeztetés (TERV.md F16) ----------
+
+    /** A központtól kapott legutóbbi egyeztetés, és hogy a felhasználó elfogadhatja-e a nyitó különbséget. */
+    app.get<P>(`${base}/reconciliation`, async (request) => {
+      const { companyId } = request.params;
+      const { role } = await requireCompanyPermission(db, request, companyId, "company:read");
+      return { report: await latestReport(db, companyId), canAcceptBaseline: role === "ADMIN" || role === "CHIEF_ACCOUNTANT", hubConfigured: Boolean(config.hub) };
+    });
+
+    const hubCall = async <T>(fn: () => Promise<T>): Promise<T> => {
+      try {
+        return await fn();
+      } catch (e) {
+        if (e instanceof HubError) throw new AppError(e.status >= 500 ? 503 : e.status === 404 ? 409 : e.status, e.code, e.message);
+        throw e;
+      }
+    };
+
+    /** Ellenőrzés most: a központ lefuttatja (a Könyvelőt és a Készletet is megkérdezi), és visszaadja az eredményt. */
+    app.post<P>(`${base}/reconciliation/run`, async (request) => {
+      const { companyId } = request.params;
+      await requireCompanyPermission(db, request, companyId, "ledger:post");
+      if (!reconcileHub) throw conflict("Az integrációs központ nincs beállítva ebben a Könyvelőben (KOZPONT_URL, KOZPONT_TITOK).");
+      const report = await hubCall(() => reconcileHub.reconcileNow(companyId));
+      await db.transaction((tx) => storeReport(tx, report));
+      return { report: await latestReport(db, companyId) };
+    });
+
+    /**
+     * A nyitó (kiinduló) különbség elfogadása (F16.4/3): csak az adminisztrátor vagy a vezető könyvelő,
+     * indoklással, pontosan a javasolt összeggel. A központ naplózza; itt az audit naplóba is bekerül.
+     */
+    app.post<P>(`${base}/reconciliation/baseline`, async (request) => {
+      const { companyId } = request.params;
+      const { user, role } = await requireCompanyPermission(db, request, companyId, "company:update");
+      const input = parseBody(baselineSchema, request.body);
+      if (!reconcileHub) throw conflict("Az integrációs központ nincs beállítva ebben a Könyvelőben (KOZPONT_URL, KOZPONT_TITOK).");
+      const current = await latestReport(db, companyId);
+      if (!current || current.runId !== input.runId) throw conflict("Azóta újabb ellenőrzés érkezett; nézze át, és az ott látható összeget fogadja el.");
+      const report = await hubCall(() =>
+        reconcileHub.acceptBaseline({ companyRef: companyId, runId: input.runId, amount: input.amount, reason: input.reason, acceptedBy: `${user.name} (${ROLE_LABELS[role]})` }),
+      );
+      await db.transaction(async (tx) => {
+        await storeReport(tx, report);
+        await writeAudit(tx, {
+          companyId,
+          userId: user.id,
+          action: "integration.reconciliation_baseline",
+          entityType: "company",
+          entityId: companyId,
+          after: { runId: input.runId, amount: input.amount, reason: input.reason },
+          ip: request.ip,
+        });
+      });
+      return { report: await latestReport(db, companyId) };
+    });
+
     await approvalsRoutes(app, db);
   },
 };
+
+const baselineSchema = z.object({
+  runId: z.uuid("Érvénytelen egyeztetés."),
+  amount: z.number().int("Az összeg egész fillér legyen."),
+  reason: z.string().trim().min(10, "Írja le röviden, miért rendben ez a különbség (legalább 10 karakter).").max(1000),
+});
 
 const choiceSchema = z.object({ choice: z.enum(["RECEIVED", "INVOICE"], { error: "Válassza ki a dátumot." }) });
 const stockLinesSchema = z.object({

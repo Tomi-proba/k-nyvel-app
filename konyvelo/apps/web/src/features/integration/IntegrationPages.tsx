@@ -11,6 +11,7 @@ import {
   POSTING_MODES,
   PURCHASE_DATE_RULE_LABELS,
   PURCHASE_DATE_RULES,
+  RECONCILIATION_STATUS_LABELS,
   type ApprovalGroupDto,
   type ApprovalItemDto,
   type ApprovalResultDto,
@@ -19,6 +20,9 @@ import {
   type IntegrationStatusDto,
   type PostingMode,
   type PurchaseDateRule,
+  type ReconciliationDto,
+  type ReconciliationResultDto,
+  type ReconciliationStatus,
 } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";
 import { ApiError, get, post, put } from "../../lib/api";
@@ -224,7 +228,141 @@ export function IntegrationSettingsPage() {
           )}
         </form>
       )}
+      {s.linked && companyId && <ReconciliationCard companyId={companyId} />}
     </>
+  );
+}
+
+// ---------- Egyeztetés (TERV.md F16) ----------
+
+const reconciliationKey = (companyId: string) => ["integration", companyId, "reconciliation"] as const;
+
+const STATUS_BADGE: Record<ReconciliationStatus, string> = {
+  RENDBEN: "badge-success",
+  FUGGO: "",
+  REGOTA_FUGG: "badge-warning",
+  ELTERES: "badge-danger",
+  NYITO_ELFOGADASRA_VAR: "badge-warning",
+  NEM_FUTOTT: "badge-warning",
+};
+
+/**
+ * A központ egyeztetésének legutóbbi eredménye: ellenőrzésenként állapot, magyarázat és az érintett tételek.
+ * „Ellenőrzés most”, és a nyitó különbség elfogadása (adminisztrátor, vezető könyvelő; indoklással).
+ */
+function ReconciliationCard({ companyId }: { companyId: string }) {
+  const ws = useWorkspace();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const q = useQuery({ queryKey: reconciliationKey(companyId), queryFn: () => get<ReconciliationDto>(`/api/companies/${companyId}/integration/reconciliation`) });
+  const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: reconciliationKey(companyId) }), queryClient.invalidateQueries({ queryKey: ["todos"] })]);
+  const run = useMutation({
+    mutationFn: () => post(`/api/companies/${companyId}/integration/reconciliation/run`),
+    onSuccess: async () => {
+      await refresh();
+      toast("success", "Az egyeztetés lefutott.");
+    },
+    onError: (e) => toast("error", e.message),
+  });
+
+  if (q.isLoading) return <Loading />;
+  if (q.error) return <ErrorBox error={q.error} />;
+  const { report, canAcceptBaseline, hubConfigured } = q.data!;
+  return (
+    <section className="card stack" id="egyeztetes" aria-labelledby="int-reconcile">
+      <h2 id="int-reconcile">Egyeztetés a Készlettel</h2>
+      <p className="muted small">
+        Éjszakánként (és kérésre) a központ összeveti a két program számait: a készletértéket a készletszámlával, az ELÁBÉ-t, a párosított tételek összegét, a
+        kifizetettséget, az átadásokat és a kapcsolatokat. Az eltérést kimutatja és megmagyarázza; a könyvelést magától soha nem javítja.
+      </p>
+      {!report ? (
+        <p className="muted">Még nem volt egyeztetés.</p>
+      ) : (
+        <>
+          <p className="muted small">
+            Legutóbbi ellenőrzés: {formatDateTimeHu(report.at)}. Készletérték: {formatDateHu(report.asOf)}; ELÁBÉ-időszak: {formatDateHu(report.from)} – {formatDateHu(report.to)}.
+          </p>
+          <ul className="reconcile-list">
+            {report.results.map((r) => (
+              <li key={r.check} className="reconcile-item">
+                <details open={r.status !== "RENDBEN"}>
+                  <summary>
+                    <span className={`badge ${STATUS_BADGE[r.status]}`}>{RECONCILIATION_STATUS_LABELS[r.status]}</span>
+                    <strong>{r.title}</strong>
+                  </summary>
+                  {r.detail && <p className="reconcile-detail small">{r.detail}</p>}
+                  {r.items.length > 0 && (
+                    <ul className="small">
+                      {r.items.map((i, n) => (
+                        <li key={n}>{i.documentId ? <Link to={`/konyveles/${i.documentId}`}>{i.label}</Link> : i.label}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {r.check === "E1" && r.baselineProposal !== null && (
+                    <BaselineForm companyId={companyId} runId={report.runId} result={r} canAccept={canAcceptBaseline} onDone={refresh} />
+                  )}
+                </details>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {hubConfigured && ws.can("ledger:post") && (
+        <div className="row">
+          <button type="button" className="btn" disabled={run.isPending} onClick={() => run.mutate()}>
+            {run.isPending ? "Ellenőrzés folyamatban…" : "Ellenőrzés most"}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** A nyitó (kiinduló) különbség elfogadása: pontosan a javasolt összeg, indoklással; a központ naplózza. */
+function BaselineForm({ companyId, runId, result, canAccept, onDone }: { companyId: string; runId: string; result: ReconciliationResultDto; canAccept: boolean; onDone: () => Promise<unknown> }) {
+  const toast = useToast();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | undefined>();
+  const amount = result.baselineProposal!;
+  if (!canAccept) {
+    return <p className="muted small">A kiinduló különbséget az adminisztrátor vagy a vezető könyvelő fogadhatja el, indoklással.</p>;
+  }
+  return (
+    <div className="stack">
+      <Field label="Indoklás" hint="Miért rendben ez a különbség? (pl. nyitó készlet az összekapcsolás előttről, a leltár szerint)" error={error}>
+        {(p) => <textarea {...p} rows={2} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} />}
+      </Field>
+      <div className="row">
+        <ConfirmDialog
+          trigger={
+            <button type="button" className="btn btn-primary" disabled={reason.trim().length < 10}>
+              Elfogadom kiinduló különbségnek: {formatHuf(amount)}
+            </button>
+          }
+          title="Nyitó különbség elfogadása"
+          description={
+            <p>
+              A készletérték és a készletszámla közti {formatHuf(amount)} különbséget kiinduló különbségnek fogadja el. Ezután az egyeztetés csak a változást figyeli. Az
+              elfogadás a nevével és az indoklással naplózva lesz; később csak újabb indoklással módosítható.
+            </p>
+          }
+          confirmLabel="Elfogadom"
+          danger={false}
+          onConfirm={async () => {
+            try {
+              await post(`/api/companies/${companyId}/integration/reconciliation/baseline`, { runId, amount, reason: reason.trim() });
+              setError(undefined);
+              setReason("");
+              await onDone();
+              toast("success", "A nyitó különbség elfogadva.");
+            } catch (e) {
+              if (e instanceof ApiError) setError(e.fields.reason);
+              toast("error", e instanceof Error ? e.message : "Váratlan hiba történt.");
+            }
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

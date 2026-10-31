@@ -431,7 +431,21 @@ export const integrationRecords = pgTable("integration_records", {
   needsDateChoice: boolean("needs_date_choice").notNull().default(false),
   /** Ha embernek kell átnéznie, mielőtt csoportosan jóváhagyható (0012_integracio_keszlet.sql). */
   reviewNote: text("review_note"),
+  /** A Készletből jött piszkozat tartozik oldalának összege létrehozáskor (E3; 0013_egyeztetes.sql). */
+  expectedAmount: bigint("expected_amount", { mode: "number" }),
   createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+/** A központtól kapott legutóbbi egyeztetési eredmény (TERV.md F16). */
+export const integrationReconciliations = pgTable("integration_reconciliations", {
+  companyId: uuid("company_id").primaryKey(),
+  runId: uuid("run_id").notNull(),
+  at: ts("at").notNull(),
+  asOf: d("as_of").notNull(),
+  periodFrom: d("period_from").notNull(),
+  periodTo: d("period_to").notNull(),
+  results: jsonb("results").notNull().$type<unknown[]>(),
+  receivedAt: ts("received_at").notNull().defaultNow(),
 });
 
 export const integrationTodos = pgTable("integration_todos", {

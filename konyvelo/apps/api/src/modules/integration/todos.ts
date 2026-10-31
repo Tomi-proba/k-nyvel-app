@@ -24,7 +24,9 @@ export type TodoKind =
   | "INVENTORY_APPROVAL"
   | "CASH_APPROVAL"
   | "RETURN_APPROVAL"
-  | "SOURCE_CHANGED";
+  | "SOURCE_CHANGED"
+  /** Egyeztető ellenőrzés eltérése (TERV.md F16): a következő rendben lévő ellenőrzéssel magától lezárul. */
+  | "RECONCILIATION";
 
 export async function openTodo(
   tx: Tx,

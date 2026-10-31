@@ -83,7 +83,9 @@ export type IntegrationTodoKind =
   | "CASH_APPROVAL"
   | "RETURN_APPROVAL"
   /** A forrás utólag módosult (pl. elküldött napi zárás napjára új mozgás): át kell nézni, magától nem javít. */
-  | "SOURCE_CHANGED";
+  | "SOURCE_CHANGED"
+  /** Egyeztető ellenőrzés eltérése (TERV.md F16): a következő rendben lévő ellenőrzéssel magától lezárul. */
+  | "RECONCILIATION";
 
 /** A csoportos jóváhagyásban (Könyvelés → Jóváhagyás) kezelt Teendőfajták. */
 export const APPROVAL_TODO_KINDS: readonly IntegrationTodoKind[] = ["PURCHASE_APPROVAL", "COGS_APPROVAL", "INVENTORY_APPROVAL", "CASH_APPROVAL", "RETURN_APPROVAL", "REVERSAL_APPROVAL"];
@@ -148,3 +150,47 @@ export type ApprovalResultDto = {
 };
 
 export const MODULE_DISPLAY: Record<string, string> = { konyvelo: "Könyvelő", keszlet: "Készletfigyelő", eafa: "eÁFA" };
+
+// ---------- Egyeztetés (TERV.md F16) ----------
+
+export type ReconciliationCheck = "E1" | "E2" | "E3" | "E4" | "E5" | "E6";
+export type ReconciliationStatus = "RENDBEN" | "FUGGO" | "REGOTA_FUGG" | "ELTERES" | "NYITO_ELFOGADASRA_VAR" | "NEM_FUTOTT";
+
+export const RECONCILIATION_CHECK_LABELS: Record<ReconciliationCheck, string> = {
+  E1: "Készletérték",
+  E2: "ELÁBÉ",
+  E3: "Párosított tételek összege",
+  E4: "Kifizetettség",
+  E5: "Átadások teljessége",
+  E6: "Kapcsolatok épsége",
+};
+
+export const RECONCILIATION_STATUS_LABELS: Record<ReconciliationStatus, string> = {
+  RENDBEN: "Rendben",
+  FUGGO: "Átadás folyamatban",
+  REGOTA_FUGG: "Régóta függő tétel",
+  ELTERES: "Eltérés",
+  NYITO_ELFOGADASRA_VAR: "Nyitó különbség elfogadásra vár",
+  NEM_FUTOTT: "Nem futott",
+};
+
+/** Az egyeztetés egy ellenőrzésének eredménye (a központtól, változatlanul). Összegek fillérben. */
+export type ReconciliationResultDto = {
+  check: ReconciliationCheck;
+  status: ReconciliationStatus;
+  title: string;
+  detail: string | null;
+  diff: number | null;
+  explained: number | null;
+  unexplained: number | null;
+  tolerance: number | null;
+  baselineProposal: number | null;
+  items: Array<{ label: string; recordType: string | null; recordId: string | null; documentId: string | null; serialNumber: string | null; amount: number | null; note: string | null }>;
+};
+
+export type ReconciliationDto = {
+  report: { runId: string; at: string; asOf: string; from: string; to: string; results: ReconciliationResultDto[]; receivedAt: string } | null;
+  /** Adminisztrátor vagy vezető könyvelő: elfogadhatja a nyitó különbséget (F16.4/3). */
+  canAcceptBaseline: boolean;
+  hubConfigured: boolean;
+};

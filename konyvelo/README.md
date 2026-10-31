@@ -345,6 +345,19 @@ mint eddig.**
   - Csak a hiánytalan tételek jelölhetők ki; hiánytalan az, amelyet a könyvelési ellenőrzés most elfogadna,
     és ezt próbakönyveléssel ellenőrizzük.
   - A könyvelés egy ember kattintására, az ő nevével történik.
+- **Egyeztetés a Készlettel (I4):** éjszakánként (alapból 02:30-kor) és kérésre a központ összeveti a két
+  program számait, és az eredményt visszaküldi. *Beállítások → Integráció → Egyeztetés a Készlettel*:
+  - hat ellenőrzés: készletérték ↔ a készletszámla (261) egyenlege; ELÁBÉ ↔ a 814 forgalma; a Készletből
+    jött bizonylatok könyvelt összege ↔ a Készlet szerinti összeg; kifizetettség; átadások; kapcsolatok
+    (pl. törölt forrás sztornó nélkül, törölt piszkozat élő forrással);
+  - eltérés = magyarázott rész (jóváhagyásra váró tételek, átadás alatt lévő események) + megmagyarázatlan
+    rész. Tűrés: érintett bizonylatonként 1 Ft, de egy ellenőrzésben összesen legfeljebb 1 000 Ft (a
+    központ beállítása). A nem rendben lévő ellenőrzésből Teendő lesz a Kezdőlapon, amely a következő
+    rendben lévő ellenőrzéssel magától lezárul;
+  - **a nyitó (kiinduló) különbséget** az első ellenőrzés után az adminisztrátor vagy a vezető könyvelő
+    fogadhatja el, indoklással, pontosan a kimutatott összeggel. Ez naplózva van (a központban és az
+    audit naplóban), és utána csak a változást figyeljük;
+  - a program magától soha nem javítja a könyvelést.
 - **Forrásjelölés:** minden ilyen bizonylaton látszik, honnan jött, és mi lett belőle a többi programban.
   Az automatikus műveleteket a belépni nem tudó „Integrációs központ (automatikus)” gépi felhasználó végzi,
   és az audit naplóba kerülnek.

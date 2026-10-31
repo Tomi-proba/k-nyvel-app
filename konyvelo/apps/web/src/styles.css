@@ -320,6 +320,11 @@ th.num {
   background: var(--warning-bg);
   border-color: transparent;
 }
+.badge-danger {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: transparent;
+}
 
 /* ---------- Űrlapok ---------- */
 
@@ -1077,4 +1082,35 @@ tr.clickable:hover td {
   object-fit: contain;
   align-self: center;
   min-height: 0;
+}
+
+/* ---------- Egyeztetés (TERV.md F16) ---------- */
+
+.reconcile-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.reconcile-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.reconcile-item summary {
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.reconcile-item .reconcile-detail {
+  white-space: pre-line;
+  margin: 8px 0 0;
+}
+.reconcile-item ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
 }

@@ -137,8 +137,18 @@ async function addRecord(ctx: Ctx, kind: IntegrationRecordKind, documentId: stri
     sourceLabel: ctx.event.source.label ?? null,
     eventId: ctx.event.id,
     ...(documentId ? { draftFingerprint: await draftFingerprint(ctx.tx, documentId) } : {}),
+    // A Készlet adataiból készült piszkozat összege (E3): a könyveléskor ezzel vetjük össze.
+    ...(documentId && AMOUNT_KINDS.has(kind) ? { expectedAmount: await debitTotal(ctx.tx, documentId) } : {}),
     ...extra,
   });
+}
+
+/** Azok a tételfajták, amelyeknek a bizonylata a Készlet összegeiből készül (a párosítás és a sztornó nem ilyen). */
+const AMOUNT_KINDS = new Set<IntegrationRecordKind>(["PURCHASE", "COGS", "RETURN", "INVENTORY", "CASH"]);
+
+async function debitTotal(db: Executor, documentId: string): Promise<number> {
+  const r = await db.execute<{ total: string }>(sql`SELECT coalesce(sum(amount), 0)::text AS total FROM journal_lines WHERE document_id = ${documentId} AND side = 'D'`);
+  return Number(r.rows[0]?.total ?? 0);
 }
 
 /** Mentőpont: ha a belső lépés hibát dob, csak az gördül vissza, a bejövő esemény feldolgozása nem. */

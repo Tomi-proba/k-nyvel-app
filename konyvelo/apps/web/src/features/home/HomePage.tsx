@@ -168,9 +168,10 @@ function TodoCard() {
     for (const it of t.integration.todos.filter((x) => !APPROVAL_TODO_KINDS.includes(x.kind))) {
       items.push({
         key: `int-${it.id}`,
-        to: it.documentId ? `/konyveles/${it.documentId}` : it.kind === "PARTNER" ? "/partnerek" : "/beallitasok/integracio",
+        to: it.documentId ? `/konyveles/${it.documentId}` : it.kind === "PARTNER" ? "/partnerek" : it.kind === "RECONCILIATION" ? "/beallitasok/integracio#egyeztetes" : "/beallitasok/integracio",
         title: it.title,
-        ...(it.detail ? { detail: it.detail } : {}),
+        // Az egyeztetés részletei hosszúak: a Kezdőlapon csak az első sor, a többi az Integráció oldalon.
+        ...(it.detail ? { detail: it.kind === "RECONCILIATION" ? it.detail.split("\n")[0]! : it.detail } : {}),
         tone: it.kind === "HUB_UNREACHABLE" || it.kind === "UNSUPPORTED" ? "danger" : it.kind === "INTRO_MONTH" ? "info" : "warning",
       });
     }
