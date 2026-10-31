@@ -7,11 +7,13 @@ import {
   LINK_PATH,
   RECONCILE_PATH,
   RECONCILE_RESULT_PATH,
+  RECONCILE_VAT_PATH,
   signedHeaders,
   verifySignature,
   type EventEnvelope,
   type InboundResult,
   type KonyveloAnswer,
+  type KonyveloVatAnswer,
   type ReconcileReport,
   type ReconcileResult,
 } from "@konyvelo/esemenyek";
@@ -280,6 +282,64 @@ describe("az eredmény fogadása és a Teendők", () => {
   it("hibás eredményt nem fogad el", async () => {
     const r = await hub("POST", RECONCILE_RESULT_PATH, { runId: "x", companyRef: companyId });
     expect(r.statusCode).toBe(422);
+  });
+});
+
+describe("áfa (I5): az eÁFA-val", () => {
+  const vegy = (date: string, lines: Array<{ account: string; side: "D" | "C"; amount: number }>) =>
+    admin.post(`${c()}/documents`, {
+      docType: "VEGY", description: "Áfa-teszt", issueDate: date, accountingDate: date, post: true,
+      lines: lines.map((l) => ({ accountId: acc[l.account], side: l.side, amount: l.amount })),
+    });
+  const eafaEvent = (type: string, payload: Record<string, unknown>, seq = 1): EventEnvelope => ({
+    id: randomUUID(),
+    type,
+    version: 1,
+    source: { module: "eafa", companyRef: "eafa-ceg-1", recordType: "bevallas_idoszak", recordId: `${String(payload.periodStart)}_${String(payload.periodEnd)}`, sequence: seq },
+    occurredAt: "2026-12-12T08:00:00Z",
+    payload,
+  });
+
+  it("a 466/467 forgalma az eÁFA időszakaira; az áfa-elszámolás (468) kimarad, de látszik", async () => {
+    let out = await vegy("2026-12-05", [{ account: "384", side: "D", amount: 1_270_00 }, { account: "467", side: "C", amount: 270_00 }, { account: "911", side: "C", amount: 1_000_00 }]);
+    expect(out.statusCode, out.body).toBe(201);
+    out = await vegy("2026-12-06", [{ account: "466", side: "D", amount: 54_00 }, { account: "529", side: "D", amount: 200_00 }, { account: "384", side: "C", amount: 254_00 }]);
+    expect(out.statusCode, out.body).toBe(201);
+    out = await vegy("2026-12-31", [{ account: "467", side: "D", amount: 270_00 }, { account: "468", side: "C", amount: 270_00 }]);
+    expect(out.statusCode, out.body).toBe(201);
+    const r = await hub("POST", RECONCILE_VAT_PATH, { runId: randomUUID(), companyRef: companyId, asOf: "2026-12-31", periods: [{ from: "2026-12-01", to: "2026-12-31" }], events: [] });
+    expect(r.statusCode, r.body).toBe(200);
+    const a = r.json() as KonyveloVatAnswer;
+    expect(a.periods[0]).toMatchObject({ from: "2026-12-01", to: "2026-12-31", output: 270_00, input: 54_00, settlementDocuments: 1 });
+    expect(a.periods[0]!.documents.map((d) => [d.output, d.input])).toEqual([
+      [270_00, 0],
+      [0, 54_00],
+    ]);
+  });
+
+  it("beküldött áfaidőszak: figyelmeztetés a bizonylaton (nem tiltás); az utólagos változásból Teendő, rendeződéskor lezárul", async () => {
+    const period = { periodStart: "2026-12-01", periodEnd: "2026-12-31" };
+    let r = await hub("POST", INBOUND_PATH, { event: eafaEvent("eafa.bevallas.bekuldve", { declarationId: "d1", ...period, frequency: "MONTHLY", kind: "ORIGINAL", environment: "TEST", submittedAt: "2026-12-12T08:00:00Z" }), targetCompanyRef: companyId });
+    expect(r.statusCode, r.body).toBe(200);
+    expect((await admin.get(`${c()}/integration/vat-periods`)).json()).toEqual([{ start: "2026-12-01", end: "2026-12-31", kind: "ORIGINAL", submittedAt: "2026-12-12T08:00:00.000Z" }]);
+    // Utólag könyvelt áfás bizonylat ugyanarra a hónapra: figyelmeztet, de könyvelhető.
+    const late = await vegy("2026-12-20", [{ account: "384", side: "D", amount: 127_00 }, { account: "467", side: "C", amount: 27_00 }, { account: "911", side: "C", amount: 100_00 }]);
+    expect(late.statusCode, late.body).toBe(201);
+    const info = (await admin.get(`${c()}/documents/${late.json().id as string}/integration`)).json();
+    expect(info.vatWarning).toContain("már beküldött áfabevallás időszakába esik");
+    // Nem áfás bizonylatra nincs figyelmeztetés.
+    const plain = await vegy("2026-12-21", [{ account: "384", side: "D", amount: 1_00 }, { account: "479", side: "C", amount: 1_00 }]);
+    expect((await admin.get(`${c()}/documents/${plain.json().id as string}/integration`)).json().vatWarning).toBeNull();
+
+    r = await hub("POST", INBOUND_PATH, { event: eafaEvent("eafa.idoszak.utolagos_valtozas", { ...period, status: "OPEN", changes: 1, outputVatEffect: 27_00, inputVatEffect: 0, resolution: null, note: null }, 2), targetCompanyRef: companyId });
+    expect(r.statusCode, r.body).toBe(200);
+    let t = ((await admin.get(`${c()}/integration/todos`)).json() as Array<{ kind: string; title: string }>).filter((x) => x.kind === "VAT_SELF_CHECK");
+    expect(t).toHaveLength(1);
+    expect(t[0]!.title).toContain("önellenőrzés szükséges lehet");
+    r = await hub("POST", INBOUND_PATH, { event: eafaEvent("eafa.idoszak.utolagos_valtozas", { ...period, status: "RESOLVED", changes: 0, outputVatEffect: 0, inputVatEffect: 0, resolution: "NOT_NEEDED", note: "Nem kell önellenőrzés: a következő időszakba tartozik." }, 3), targetCompanyRef: companyId });
+    expect(r.statusCode, r.body).toBe(200);
+    t = ((await admin.get(`${c()}/integration/todos`)).json() as Array<{ kind: string; title: string }>).filter((x) => x.kind === "VAT_SELF_CHECK");
+    expect(t).toHaveLength(0);
   });
 });
 

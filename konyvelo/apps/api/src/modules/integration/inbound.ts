@@ -4,6 +4,7 @@ import { canonicalJson, formatDateHu, formatHuf } from "@konyvelo/domain";
 import type { EventEnvelope, InboundResult } from "@konyvelo/esemenyek";
 import { documentInputSchema } from "@konyvelo/shared";
 import { writeAudit } from "../../core/audit";
+import { vatLaterChange, vatSubmitted } from "./vat";
 import type { AuthUser } from "../../core/auth";
 import type { Executor, Tx } from "../../core/db";
 import { AppError } from "../../core/errors";
@@ -929,6 +930,10 @@ export async function applyInbound(tx: Tx, companyId: string, event: EventEnvelo
       return product(ctx, payload);
     case "torzs.partner.valtozott@1":
       return partnerChanged(ctx, payload);
+    case "eafa.bevallas.bekuldve@1":
+      return vatSubmitted(tx, companyId, payload);
+    case "eafa.idoszak.utolagos_valtozas@1":
+      return vatLaterChange(tx, companyId, payload);
     default: {
       const key = `nem-tamogatott:${event.type}@${event.version}`;
       const title = `A Könyvelő nem ismeri ezt az eseményt (${event.type}, ${event.version}. verzió); frissíteni kell. Az esemény nem veszett el, újraküldhető.`;

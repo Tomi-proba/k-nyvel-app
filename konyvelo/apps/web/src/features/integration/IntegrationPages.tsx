@@ -270,10 +270,12 @@ function ReconciliationCard({ companyId }: { companyId: string }) {
   const { report, canAcceptBaseline, hubConfigured } = q.data!;
   return (
     <section className="card stack" id="egyeztetes" aria-labelledby="int-reconcile">
-      <h2 id="int-reconcile">Egyeztetés a Készlettel</h2>
+      <h2 id="int-reconcile">Egyeztetés a többi programmal</h2>
       <p className="muted small">
-        Éjszakánként (és kérésre) a központ összeveti a két program számait: a készletértéket a készletszámlával, az ELÁBÉ-t, a párosított tételek összegét, a
-        kifizetettséget, az átadásokat és a kapcsolatokat. Az eltérést kimutatja és megmagyarázza; a könyvelést magától soha nem javítja.
+        Éjszakánként (és kérésre) a központ összeveti a programok számait. A Készlettel: a készletértéket a készletszámlával, az ELÁBÉ-t, a párosított
+        tételek összegét, a kifizetettséget, az átadásokat és a kapcsolatokat. Az eÁFA-val: a 466/467 forgalmát a bevallási időszakonkénti analitikával,
+        a beküldött bevallások utólagos változásait és az áfás bizonylatok párosítását. Az eltérést kimutatja és megmagyarázza; a könyvelést magától
+        soha nem javítja.
       </p>
       {!report ? (
         <p className="muted">Még nem volt egyeztetés.</p>
@@ -641,7 +643,12 @@ export function DocumentIntegrationPanel({ documentId, posted }: { documentId: s
   };
   if (!q.data) return null;
   const d = q.data;
-  if (!d.sources.length && !d.targets?.length && !d.reversal && !(posted && d.stockLines.length)) return null;
+  const vatWarning = d.vatWarning ? (
+    <div className="alert alert-warning" role="status">
+      {d.vatWarning} A Könyvelő ettől nem tilt; a döntés az eÁFA-ban születik.
+    </div>
+  ) : null;
+  if (!d.sources.length && !d.targets?.length && !d.reversal && !(posted && d.stockLines.length)) return vatWarning;
   const canPost = ws.can("ledger:post");
 
   return (
@@ -660,6 +667,7 @@ export function DocumentIntegrationPanel({ documentId, posted }: { documentId: s
           <span className="muted small"> · {formatDateTimeHu(s.at)}</span>
         </p>
       ))}
+      {vatWarning}
       {d.isCogs && !posted && (
         <div className="alert alert-info">ELÁBÉ-tétel: a Készlet költségszámítása szerint. Csak ember hagyhatja jóvá, a szokásos előnézettel.</div>
       )}

@@ -8,6 +8,7 @@ import { AppError, forbidden, parseBody } from "../../core/errors";
 import { accounts, auditLog, documents, integrationRecords, integrationTodos, journalLines, partners, SYSTEM_USER_ID } from "../../core/schema";
 import { postDocument, reverseDocument } from "../documents";
 import { chooseDate } from "./dates";
+import { submittedVatWarning } from "./vat";
 import { draftFingerprint } from "./inbound";
 
 /**
@@ -110,6 +111,9 @@ async function item(tx: Tx, companyId: string, e: QueueEntry, user: AuthUser): P
       // A helyesbítő számla számát a program nem találja ki (F15.8).
       if (e.kind === "RETURN" && !doc.externalNumber?.trim()) problems.push("Írja be a helyesbítő számla számát (a bizonylaton).");
       problems.push(...(await reviewNotes(tx, doc.id)));
+      // Beküldött áfaidőszakba eső áfás tétel: csak egyenként, tudatosan (F17.2).
+      const vat = await submittedVatWarning(tx, companyId, doc.id);
+      if (vat) problems.push(`${vat} (Egyenként, a bizonylaton jóváhagyható.)`);
     }
   }
   return {

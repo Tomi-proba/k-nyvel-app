@@ -26,7 +26,9 @@ export type TodoKind =
   | "RETURN_APPROVAL"
   | "SOURCE_CHANGED"
   /** Egyeztető ellenőrzés eltérése (TERV.md F16): a következő rendben lévő ellenőrzéssel magától lezárul. */
-  | "RECONCILIATION";
+  | "RECONCILIATION"
+  /** Az eÁFA szerint egy már beküldött áfabevallás időszakát utólagos változás érinti (F17.2): önellenőrzés szükséges lehet. */
+  | "VAT_SELF_CHECK";
 
 export async function openTodo(
   tx: Tx,

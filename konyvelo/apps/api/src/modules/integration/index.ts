@@ -9,6 +9,7 @@ import {
   MODULE_LABELS,
   RECONCILE_PATH,
   RECONCILE_RESULT_PATH,
+  RECONCILE_VAT_PATH,
   registryOf,
   validateEvent,
   verifyHubRequest,
@@ -50,7 +51,8 @@ import { approvalsRoutes } from "./approvals";
 import { chooseDate } from "./dates";
 import { applyInbound } from "./inbound";
 import { refreshMappingTodo } from "./mapping";
-import { answerReconcile, latestReport, storeReport } from "./reconcile";
+import { answerReconcile, answerVatReconcile, latestReport, storeReport } from "./reconcile";
+import { submittedVatWarning, vatPeriods } from "./vat";
 import { openIntegrationTodos, resolveTodo } from "./todos";
 
 /**
@@ -197,6 +199,9 @@ function hubRoutes(app: FastifyInstance, db: Db, secret: string | null) {
 
     /** Egyeztetés (F16): a Könyvelő saját számai a kért napra és időszakra. Csak összegek és bizonylatszámok. */
     scope.post(RECONCILE_PATH, async (request) => answerReconcile(db, json(request.body)));
+
+    /** Áfa-egyeztetés (I5): a 466/467 forgalma és az áfás bizonylatok az eÁFA bevallási időszakaira. */
+    scope.post(RECONCILE_VAT_PATH, async (request) => answerVatReconcile(db, json(request.body)));
 
     /** Az egyeztetés eredménye: eltároljuk, és a nem rendben lévő ellenőrzésből Teendő lesz. */
     scope.post(RECONCILE_RESULT_PATH, async (request) => db.transaction(async (tx) => storeReport(tx, json(request.body))));
@@ -405,6 +410,8 @@ export const integrationModule: AppModule = {
         targets,
         stockLines: stock.map((s) => ({ productId: s.productId, productName: s.productName, quantity: Number(s.quantity), unit: s.unit, netAmount: s.netAmount, vatRate: s.vatRate === null ? null : Number(s.vatRate), vatAmount: s.vatAmount })),
         isCogs: records.some((r) => r.kind === "COGS"),
+        // Beküldött áfaidőszakba eső áfás bizonylat: figyelmeztetés (nem tiltás), F17.2.
+        vatWarning: await submittedVatWarning(db, companyId, documentId),
       };
     });
 
@@ -480,6 +487,13 @@ export const integrationModule: AppModule = {
         });
       });
       return { ok: true };
+    });
+
+    /** Az eÁFA-ban beküldött áfabevallások időszakai (a figyelmeztetéshez). */
+    app.get<P>(`${base}/vat-periods`, async (request) => {
+      const { companyId } = request.params;
+      await requireCompanyPermission(db, request, companyId, "company:read");
+      return vatPeriods(db, companyId);
     });
 
     // ---------- Egyeztetés (TERV.md F16) ----------

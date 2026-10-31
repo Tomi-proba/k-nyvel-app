@@ -3,7 +3,9 @@ import {
   RECONCILE_TODO_STATUSES,
   reconcileReportSchema,
   reconcileRequestSchema,
+  vatReconcileRequestSchema,
   type KonyveloAnswer,
+  type KonyveloVatAnswer,
   type ReconcileReport,
   type ReconcileResult,
 } from "@konyvelo/esemenyek";
@@ -209,4 +211,66 @@ export async function latestReport(db: Executor, companyId: string): Promise<Rec
   const x = r.rows[0];
   if (!x) return null;
   return { runId: x.run_id, at: new Date(x.at).toISOString(), asOf: x.as_of, from: x.period_from, to: x.period_to, results: x.results, receivedAt: new Date(x.received_at).toISOString() };
+}
+
+// ---------- Áfa-egyeztetés (I5, TERV.md F17.3) ----------
+
+/**
+ * A Könyvelő áfaszámai az eÁFA bevallási időszakaira, könyvelt bizonylatokból, a könyvelés napja szerint. Áfás
+ * bizonylat: amelynek 466-os vagy 467-es sora van; kivéve az áfa-elszámolás átvezetését (468) és az évnyitást/-zárást.
+ */
+export async function answerVatReconcile(db: Db, raw: unknown): Promise<KonyveloVatAnswer> {
+  const parsed = vatReconcileRequestSchema.safeParse(raw);
+  if (!parsed.success) throw new AppError(422, "INVALID_REQUEST", parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+  const req = parsed.data;
+  const companyId = req.companyRef;
+  if (!/^[0-9a-f-]{36}$/i.test(companyId)) throw new AppError(404, "NOT_FOUND", "A cég nem található.");
+  const s = await db.execute<{ linked_at: Date | null; unlinked_at: Date | null }>(sql`SELECT linked_at, unlinked_at FROM integration_settings WHERE company_id = ${companyId}`);
+  if (!s.rows[0]?.linked_at || s.rows[0].unlinked_at) throw new AppError(409, "NOT_LINKED", "A cég ebben a Könyvelőben nincs összekapcsolva a központtal.");
+  const periods: KonyveloVatAnswer["periods"] = [];
+  for (const p of req.periods) {
+    const docs = await db.execute<{ id: string; serial_number: string | null; external_number: string | null; tax_number: string | null; accounting_date: string; posted_at: Date; output: string; input: string; settlement: boolean }>(sql`
+      SELECT d.id, d.serial_number, d.external_number, pa.tax_number, d.accounting_date::text, coalesce(d.posted_at, d.created_at) AS posted_at,
+             coalesce(sum(CASE WHEN a.number LIKE '467%' THEN (CASE WHEN l.side = 'C' THEN l.amount ELSE -l.amount END) ELSE 0 END), 0)::text AS output,
+             coalesce(sum(CASE WHEN a.number LIKE '466%' THEN (CASE WHEN l.side = 'D' THEN l.amount ELSE -l.amount END) ELSE 0 END), 0)::text AS input,
+             bool_or(a.number LIKE '468%') AS settlement
+        FROM documents d JOIN journal_lines l ON l.document_id = d.id JOIN accounts a ON a.id = l.account_id
+        LEFT JOIN partners pa ON pa.id = d.partner_id
+       WHERE d.company_id = ${companyId} AND d.status = 'POSTED' AND d.doc_type NOT IN ('NYIT', 'ZAR')
+         AND d.accounting_date BETWEEN ${p.from}::date AND ${p.to}::date
+       GROUP BY d.id, pa.tax_number
+      HAVING bool_or(a.number LIKE '466%' OR a.number LIKE '467%')
+       ORDER BY d.accounting_date, d.serial_number LIMIT 40000`);
+    const vat = docs.rows.filter((d) => !d.settlement);
+    periods.push({
+      from: p.from,
+      to: p.to,
+      output: vat.reduce((sum, d) => sum + n(d.output), 0),
+      input: vat.reduce((sum, d) => sum + n(d.input), 0),
+      settlementDocuments: docs.rows.length - vat.length,
+      documents: vat.map((d) => ({
+        documentId: d.id,
+        serialNumber: d.serial_number,
+        externalNumber: d.external_number,
+        partnerTaxNumber: d.tax_number,
+        accountingDate: d.accounting_date,
+        postedAt: new Date(d.posted_at).toISOString(),
+        output: n(d.output),
+        input: n(d.input),
+      })),
+    });
+  }
+  const missing = req.events.length
+    ? await db.execute<{ id: string }>(sql`SELECT e.id::text AS id FROM unnest(${uuidArray(req.events)}) AS e(id)
+        WHERE NOT EXISTS (SELECT 1 FROM integration_inbox i WHERE i.event_id = e.id AND i.company_id = ${companyId})`)
+    : { rows: [] };
+  const outbox = await db.execute<{ waiting: string; oldest: Date | null }>(
+    sql`SELECT count(*)::text AS waiting, min(created_at) AS oldest FROM integration_outbox WHERE company_id = ${companyId} AND sent_at IS NULL`,
+  );
+  return {
+    module: "konyvelo",
+    periods,
+    missingEvents: missing.rows.map((m) => m.id),
+    outbox: { waiting: n(outbox.rows[0]?.waiting), failed: 0, oldest: iso(outbox.rows[0]?.oldest) },
+  };
 }

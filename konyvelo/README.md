@@ -346,7 +346,7 @@ mint eddig.**
     és ezt próbakönyveléssel ellenőrizzük.
   - A könyvelés egy ember kattintására, az ő nevével történik.
 - **Egyeztetés a Készlettel (I4):** éjszakánként (alapból 02:30-kor) és kérésre a központ összeveti a két
-  program számait, és az eredményt visszaküldi. *Beállítások → Integráció → Egyeztetés a Készlettel*:
+  program számait, és az eredményt visszaküldi. *Beállítások → Integráció → Egyeztetés a többi programmal*:
   - hat ellenőrzés: készletérték ↔ a készletszámla (261) egyenlege; ELÁBÉ ↔ a 814 forgalma; a Készletből
     jött bizonylatok könyvelt összege ↔ a Készlet szerinti összeg; kifizetettség; átadások; kapcsolatok
     (pl. törölt forrás sztornó nélkül, törölt piszkozat élő forrással);
@@ -358,6 +358,17 @@ mint eddig.**
     fogadhatja el, indoklással, pontosan a kimutatott összeggel. Ez naplózva van (a központban és az
     audit naplóban), és utána csak a változást figyeljük;
   - a program magától soha nem javítja a könyvelést.
+- **Az eÁFA-val (I5):** a Könyvelő könyvelt áfás bizonylatai az eÁFA-ba is eljutnak. Ott a NAV-adatból
+  készült tételhez párosítják őket, vagy hiányos javaslat lesz belőlük; a bevallásba semmi nem kerül magától.
+  Az eÁFA-ban beküldött áfabevallás időszakai ide is megérkeznek:
+  - ha egy áfás bizonylat (466/467) ilyen időszakba esik, a bizonylaton **figyelmeztetés** jelenik meg,
+    de a könyvelés nem tiltott;
+  - a csoportos jóváhagyásban az ilyen tétel csak egyenként hagyható jóvá;
+  - ha az eÁFA utólagos változást jelez egy beküldött időszakra, a Kezdőlapon Teendő lesz („önellenőrzés
+    szükséges lehet”). Ez lezárul, amikor az eÁFA-ban beküldték az önellenőrzést, vagy indoklással
+    jelölték, hogy nem kell.
+
+  Az egyeztetés ilyenkor a 466-os és 467-es számla forgalmát is összeveti az eÁFA bevallási időszakaival.
 - **Forrásjelölés:** minden ilyen bizonylaton látszik, honnan jött, és mi lett belőle a többi programban.
   Az automatikus műveleteket a belépni nem tudó „Integrációs központ (automatikus)” gépi felhasználó végzi,
   és az audit naplóba kerülnek.

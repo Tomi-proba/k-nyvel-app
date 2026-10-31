@@ -85,7 +85,9 @@ export type IntegrationTodoKind =
   /** A forrás utólag módosult (pl. elküldött napi zárás napjára új mozgás): át kell nézni, magától nem javít. */
   | "SOURCE_CHANGED"
   /** Egyeztető ellenőrzés eltérése (TERV.md F16): a következő rendben lévő ellenőrzéssel magától lezárul. */
-  | "RECONCILIATION";
+  | "RECONCILIATION"
+  /** Az eÁFA szerint egy már beküldött áfabevallás időszakát utólagos változás érinti (F17.2): önellenőrzés szükséges lehet. */
+  | "VAT_SELF_CHECK";
 
 /** A csoportos jóváhagyásban (Könyvelés → Jóváhagyás) kezelt Teendőfajták. */
 export const APPROVAL_TODO_KINDS: readonly IntegrationTodoKind[] = ["PURCHASE_APPROVAL", "COGS_APPROVAL", "INVENTORY_APPROVAL", "CASH_APPROVAL", "RETURN_APPROVAL", "REVERSAL_APPROVAL"];
@@ -94,6 +96,8 @@ export type IntegrationTodoDto = { id: string; kind: IntegrationTodoKind; title:
 
 /** A bizonylat kapcsolata a többi modullal („honnan jött?”, „mi lett belőle?”). */
 export type DocumentIntegrationDto = {
+  /** Ha az áfás bizonylat az eÁFA-ban már beküldött áfabevallás időszakába esik: figyelmeztetés (F17.2). */
+  vatWarning?: string | null;
   sources: Array<{ module: string; moduleLabel: string; kind: string; label: string | null; url: string | null; at: string }>;
   /** Beszerzésnél: a jóváhagyónak kell választania a könyvelés dátumát (❓2). */
   dateChoice: { receivedDate: string | null; invoiceDate: string | null } | null;
@@ -153,7 +157,7 @@ export const MODULE_DISPLAY: Record<string, string> = { konyvelo: "Könyvelő", 
 
 // ---------- Egyeztetés (TERV.md F16) ----------
 
-export type ReconciliationCheck = "E1" | "E2" | "E3" | "E4" | "E5" | "E6";
+export type ReconciliationCheck = "E1" | "E2" | "E3" | "E4" | "E5" | "E6" | "A1" | "A2" | "A3" | "A4";
 export type ReconciliationStatus = "RENDBEN" | "FUGGO" | "REGOTA_FUGG" | "ELTERES" | "NYITO_ELFOGADASRA_VAR" | "NEM_FUTOTT";
 
 export const RECONCILIATION_CHECK_LABELS: Record<ReconciliationCheck, string> = {
@@ -163,6 +167,10 @@ export const RECONCILIATION_CHECK_LABELS: Record<ReconciliationCheck, string> = 
   E4: "Kifizetettség",
   E5: "Átadások teljessége",
   E6: "Kapcsolatok épsége",
+  A1: "Fizetendő áfa",
+  A2: "Levonható áfa",
+  A3: "Beküldött bevallások utólagos változásai",
+  A4: "Áfás bizonylatok párosítása",
 };
 
 export const RECONCILIATION_STATUS_LABELS: Record<ReconciliationStatus, string> = {
