@@ -35,6 +35,7 @@ import { reverseDocument } from "../documents";
 import { approvalsRoutes } from "./approvals";
 import { chooseDate } from "./dates";
 import { applyInbound } from "./inbound";
+import { refreshMappingTodo } from "./mapping";
 import { openIntegrationTodos, resolveTodo } from "./todos";
 
 /**
@@ -124,6 +125,7 @@ function hubRoutes(app: FastifyInstance, db: Db, secret: string | null) {
         } else {
           await tx.insert(integrationSettings).values({ companyId: company.id, ...linked, ...mapping });
         }
+        await refreshMappingTodo(tx, company.id);
         await writeAudit(tx, {
           companyId: company.id,
           userId: SYSTEM_USER_ID,
@@ -296,6 +298,7 @@ export const integrationModule: AppModule = {
             ip: request.ip,
           });
         }
+        await refreshMappingTodo(tx, companyId);
         // A bevezető hónap emlékeztetője okafogyott, ha már átkapcsoltak.
         if (input.postingMode === "AUTO") {
           await tx

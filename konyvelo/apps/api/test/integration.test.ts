@@ -816,6 +816,27 @@ describe("beérkező: beszerzés v3, leltár, pénztár, visszáru, sztornó v3 
     expect((await doc_(besz.target!.recordId)).status).toBe("POSTED");
   });
 
+  it("hiányzó számla-hozzárendelés: Teendő a Kezdőlapon (a beállításokra mutatva), és magától lezárul, ha megadták", async () => {
+    expect(await todo("szamla-hozzarendeles")).toBeUndefined();
+    const status = (await admin.get(`${c()}/integration`)).json() as IntegrationStatusDto;
+    const put = (accounts: Record<string, string | null>) =>
+      admin.put(`${c()}/integration/settings`, { postingMode: status.postingMode, purchaseDateRule: status.purchaseDateRule, accounts: { ...status.accounts, ...accounts } });
+    expect((await put({ cashAccountId: null })).statusCode).toBe(200);
+    const t = (await admin.get(`${c()}/todos`)).json() as { integration: { todos: Array<{ kind: string; title: string; documentId: string | null }> } };
+    const nyitott = t.integration.todos.find((x) => x.title.startsWith("Hiányzik a számla-hozzárendelés"));
+    expect(nyitott).toMatchObject({ kind: "MISSING_DATA", documentId: null, title: expect.stringMatching(/Pénztár \(napi pénztárzárás\) \(pl\. 381\).*Beállítások → Integráció/) });
+    expect((await put({})).statusCode).toBe(200);
+    expect((await todo("szamla-hozzarendeles")).resolved_at).not.toBeNull();
+
+    // Az átadó állapot-ellenőrzése is észreveszi (pl. ha a számlát közben inaktiválták vagy törölték).
+    await ownerQuery("UPDATE integration_settings SET inventory_gain_account_id = NULL WHERE company_id = $1", [companyId]);
+    await relayOnce(ctx.db, new FakeHub());
+    expect(await todo("szamla-hozzarendeles")).toMatchObject({ resolved_at: null, title: expect.stringMatching(/Leltári többlet ellenszámlája/) });
+    await ownerQuery("UPDATE integration_settings SET inventory_gain_account_id = $2 WHERE company_id = $1", [companyId, status.accounts.inventoryGainAccountId]);
+    await relayOnce(ctx.db, new FakeHub());
+    expect((await todo("szamla-hozzarendeles")).resolved_at).not.toBeNull();
+  });
+
   it("leltáreltérés visszavonása (sztornó v3): az érintetlen piszkozat törlődik; ismeretlen tételnél Teendő", async () => {
     const r = await deliver(keszletEvent("keszlet.leltar.elteres", 1, "leltar", "LT-9", { movementId: "LT-9", date: "2026-11-22", kind: "SCRAP", productId: "P1", productName: "Bejárati ajtó", quantity: 1, unit: "db", location: null, value: 5_000, note: null }));
     await deliver(keszletEvent("keszlet.mozgas.sztornozva", 3, "leltar", "LT-9", { movementKind: "INVENTORY", movementId: "LT-9", date: "2026-11-22", reason: "téves" }, 2));

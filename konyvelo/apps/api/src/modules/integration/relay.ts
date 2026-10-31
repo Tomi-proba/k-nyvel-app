@@ -3,6 +3,7 @@ import { todayIso } from "@konyvelo/domain";
 import type { EventEnvelope, HubClient } from "@konyvelo/esemenyek";
 import type { Db } from "../../core/db";
 import { integrationOutbox, integrationSettings, integrationTodos } from "../../core/schema";
+import { refreshAllMappingTodos } from "./mapping";
 import { openTodo, resolveTodo } from "./todos";
 
 /**
@@ -64,6 +65,7 @@ export async function relayOnce(db: Db, hub: HubClient, batch = 100): Promise<Re
   }
 
   await refreshHealthTodos(db);
+  await refreshAllMappingTodos(db);
   // A központ kéréseinek nonce-ai csak az aláírás érvényességi idejéig kellenek (5 perc, bőven ráhagyva).
   await db.execute(sql`DELETE FROM integration_nonces WHERE received_at < now() - interval '1 hour'`);
   return { ...out, todosReported };
