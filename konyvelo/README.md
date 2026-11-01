@@ -369,6 +369,14 @@ mint eddig.**
     jelölték, hogy nem kell.
 
   Az egyeztetés ilyenkor a 466-os és 467-es számla forgalmát is összeveti az eÁFA bevallási időszakaival.
+- **Nyitott tételek a Készletnek (I6b, KK10):**
+  - A Könyvelő a nyitott szállítói és vevői tételeit elküldi a központnak; a Készlet ezekből mutatja a
+    fizetési kötelezettségeket és a kintlévőséget, hogy mindkét oldalon egy igazság legyen.
+  - A határidő csak a bizonylaton megadott határidő; ha nincs megadva, a Készlet „nincs határidő” jelzéssel
+    mutatja (a program nem talál ki határidőt).
+  - A listában a Készletből jött tételek forrása is benne van, és ami még könyvelésre vár: a beszerzésből
+    készült, még piszkozat szállítói számla, illetve az eladás, amelyhez még nincs könyvelt vevőszámla.
+  - Csak változáskor megy újra, de legalább 10 percenként.
 - **Közös Teendők (I6):**
   - A Könyvelő a Kezdőlap Teendőit elküldi a központnak, hogy a cég többi programja is lássa őket. Kimarad,
     ami egy másik program állapotának visszhangja, például az egyeztetés vagy az önellenőrzés jelzése.

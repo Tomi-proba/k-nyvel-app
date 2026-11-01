@@ -128,6 +128,12 @@ class FakeHub implements HubClient {
   async sharedTodos(): Promise<never> {
     throw new Error("a közös Teendőket a teendok.test.ts próbálja ki");
   }
+  async mirrorOpenItems() {
+    return { stored: 0 };
+  }
+  async openItems(): Promise<never> {
+    throw new Error("a Könyvelő nem kérdezi a saját nyitott tételeit");
+  }
 }
 
 beforeAll(async () => {

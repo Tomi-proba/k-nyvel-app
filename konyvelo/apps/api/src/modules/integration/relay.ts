@@ -5,6 +5,7 @@ import type { Db } from "../../core/db";
 import { integrationOutbox, integrationSettings, integrationTodos } from "../../core/schema";
 import { refreshAllMappingTodos } from "./mapping";
 import { mirrorTodosOnce } from "./mirror";
+import { mirrorOpenItemsOnce } from "./open-items";
 import { openTodo, resolveTodo } from "./todos";
 
 /**
@@ -140,6 +141,9 @@ export function startRelay(db: Db, hub: HubClient, log: { warn: (o: unknown, msg
         lastMirror = Date.now();
         const m = await mirrorTodosOnce(db, hub);
         if (m.failed) log.warn({ failed: m.failed }, "Integráció: a Teendő-lista nem jutott el a központba; a következő körben újra.");
+        // A nyitott tételek tükre a Készletnek (F19), ugyanígy csak változáskor.
+        const o = await mirrorOpenItemsOnce(db, hub);
+        if (o.failed) log.warn({ failed: o.failed }, "Integráció: a nyitott tételek listája nem jutott el a központba; a következő körben újra.");
       }
     } catch (e) {
       log.warn({ err: e }, "Integráció: hiba az átadó körében.");

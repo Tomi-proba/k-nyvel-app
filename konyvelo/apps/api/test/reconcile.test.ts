@@ -17,6 +17,8 @@ import {
   type ReconcileReport,
   type ReconcileResult,
 } from "@konyvelo/esemenyek";
+import { createHubClient, openItemsHash } from "@konyvelo/esemenyek";
+import { buildOpenItemsMirror, mirrorOpenItemsOnce } from "../src/modules/integration/open-items";
 import { createCompany, createTestApp, login, nextTaxNumber, ownerQuery, PASSWORD, resetDatabase, setupAdmin, type Client, type TestContext } from "./helpers";
 
 /**
@@ -32,6 +34,9 @@ let companyId: string;
 let acc: Record<string, string>;
 let supplierTax: string;
 const c = () => `/api/companies/${companyId}`;
+
+let hubPort = 0;
+const hubUrl = () => `http://127.0.0.1:${hubPort}`;
 
 /** Az ál-központ: a Könyvelő aláírt kéréseit ellenőrzi, és a teszt által megadott választ adja. */
 const fakeHub = {
@@ -132,6 +137,7 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => fakeHub.server!.listen(0, "127.0.0.1", resolve));
   const port = (fakeHub.server.address() as AddressInfo).port;
+  hubPort = port;
   ctx = await createTestApp({ hub: { url: `http://127.0.0.1:${port}`, secret: SECRET } });
   admin = await setupAdmin(ctx.app);
   const taxNumber = nextTaxNumber();
@@ -343,6 +349,52 @@ describe("áfa (I5): az eÁFA-val", () => {
     expect(r.statusCode, r.body).toBe(200);
     t = ((await admin.get(`${c()}/integration/todos`)).json() as Array<{ kind: string; title: string }>).filter((x) => x.kind === "VAT_SELF_CHECK");
     expect(t).toHaveLength(0);
+  });
+});
+
+describe("nyitott tételek a Készletnek (I6b, KK10)", () => {
+  it("a nyitott szállítói és vevői tételek a Készlet-forrással; a határidő csak a megadott; a könyvelésre várók külön", async () => {
+    // Készlet-beszerzés → piszkozat: könyvelésre vár.
+    const n1 = (await deliver(purchase("N1", 10_000_00))).target!.recordId;
+    let m = await buildOpenItemsMirror(ctx.db, companyId, "2026-11-30");
+    expect(m.pendingDrafts.find((p) => p.documentId === n1)).toEqual({ kind: "PAYABLE", documentId: n1, link: { module: "konyvelo", path: `/konyveles/${n1}?ceg=${companyId}` }, stockSources: [{ recordType: "beszerzes", recordId: "N1" }] });
+    expect(m.items.some((i) => i.documentId === n1)).toBe(false);
+    // Könyvelés után nyitott szállítói tétel lesz, a Készlet-forrással; határidő nélkül (nincs kitalálva).
+    expect((await admin.post(`${c()}/documents/${n1}/post`)).statusCode).toBe(200);
+    m = await buildOpenItemsMirror(ctx.db, companyId, "2026-11-30");
+    expect(m.pendingDrafts.some((p) => p.documentId === n1)).toBe(false);
+    expect(m.items.find((i) => i.documentId === n1)).toMatchObject({ kind: "PAYABLE", dueDate: null, open: 12_700_00, stockSources: [{ recordType: "beszerzes", recordId: "N1" }], partnerName: "Ajtó Kft." });
+
+    // Kézi vevőszámla határidővel: nyitott vevői tétel, Készlet-forrás nélkül.
+    const customerTax = nextTaxNumber();
+    const customer = (await admin.post(`${c()}/partners`, { kind: "CUSTOMER", name: "Vevő Zrt.", taxNumber: customerTax })).json().id as string;
+    const vsz = await admin.post(`${c()}/documents`, {
+      docType: "VSZ", partnerId: customer, externalNumber: "VSZ-N2", description: "Ajtó eladás", issueDate: "2026-11-04", fulfillmentDate: "2026-11-04", accountingDate: "2026-11-04", dueDate: "2026-11-12", post: true,
+      lines: [{ accountId: acc["311"], side: "D", amount: 25_400_00, partnerId: customer }, { accountId: acc["911"], side: "C", amount: 20_000_00 }, { accountId: acc["467"], side: "C", amount: 5_400_00 }],
+    });
+    expect(vsz.statusCode, vsz.body).toBe(201);
+    m = await buildOpenItemsMirror(ctx.db, companyId, "2026-11-30");
+    expect(m.items.find((i) => i.documentId === vsz.json().id)).toMatchObject({ kind: "RECEIVABLE", dueDate: "2026-11-12", open: 25_400_00, stockSources: [], partnerName: "Vevő Zrt." });
+
+    // Készlet-eladás számla nélkül: a vevői oldalon könyvelésre vár (a Könyvelő számla nélkül nem könyvel árbevételt).
+    await deliver(sale("E9"));
+    m = await buildOpenItemsMirror(ctx.db, companyId, "2026-11-30");
+    expect(m.pendingDrafts.find((p) => p.stockSources[0]!.recordId === "E9")).toEqual({ kind: "RECEIVABLE", documentId: null, link: null, stockSources: [{ recordType: "eladas", recordId: "E9" }] });
+    // A lista rendezett és a lenyomata állandó.
+    expect(openItemsHash(await buildOpenItemsMirror(ctx.db, companyId, "2026-11-30"))).toBe(openItemsHash(m));
+  });
+
+  it("az átadó csak változáskor küldi, de legalább 10 percenként", async () => {
+    fakeHub.calls = [];
+    fakeHub.reply = (path) => (path === "/api/v1/modul/tukor/nyitott-tetelek" ? { status: 200, body: { stored: 1 } } : { status: 404, body: {} });
+    const client = createHubClient({ url: hubUrl(), module: "konyvelo", secret: SECRET });
+    const t0 = new Date("2026-11-30T08:00:00Z");
+    expect(await mirrorOpenItemsOnce(ctx.db, client, t0)).toEqual({ sent: 1, unchanged: 0, failed: 0 });
+    expect(fakeHub.calls.at(-1)!.body).toMatchObject({ companyRef: companyId, asOf: "2026-11-30" });
+    expect(await mirrorOpenItemsOnce(ctx.db, client, new Date(t0.getTime() + 60_000))).toEqual({ sent: 0, unchanged: 1, failed: 0 });
+    expect((await mirrorOpenItemsOnce(ctx.db, client, new Date(t0.getTime() + 11 * 60_000))).sent).toBe(1);
+    fakeHub.reply = () => ({ status: 503, body: { code: "DOWN", message: "nem érhető el" } });
+    expect((await mirrorOpenItemsOnce(ctx.db, client, new Date(t0.getTime() + 22 * 60_000))).failed).toBe(1);
   });
 });
 
