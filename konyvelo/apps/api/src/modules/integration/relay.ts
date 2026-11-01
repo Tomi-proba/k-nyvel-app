@@ -4,6 +4,7 @@ import type { EventEnvelope, HubClient } from "@konyvelo/esemenyek";
 import type { Db } from "../../core/db";
 import { integrationOutbox, integrationSettings, integrationTodos } from "../../core/schema";
 import { refreshAllMappingTodos } from "./mapping";
+import { mirrorTodosOnce } from "./mirror";
 import { openTodo, resolveTodo } from "./todos";
 
 /**
@@ -125,14 +126,21 @@ export async function refreshHealthTodos(db: Db, now = new Date()): Promise<void
 }
 
 /** Az átadó indítása a szerverben (néhány másodpercenként; egyszerre csak egy kör fut). */
-export function startRelay(db: Db, hub: HubClient, log: { warn: (o: unknown, msg: string) => void }, intervalMs = 5_000): () => void {
+export function startRelay(db: Db, hub: HubClient, log: { warn: (o: unknown, msg: string) => void }, intervalMs = 5_000, mirrorIntervalMs = 30_000): () => void {
   let running = false;
+  let lastMirror = 0;
   const tick = async () => {
     if (running) return;
     running = true;
     try {
       const r = await relayOnce(db, hub);
       if (r.error) log.warn({ failed: r.failed }, `Integráció: az átadás nem sikerült (${r.error}); a következő körben újra.`);
+      // A Teendő-tükör (F18) ritkábban: csak változáskor küld, de az összeállítás a Kezdőlap lekérdezése.
+      if (Date.now() - lastMirror >= mirrorIntervalMs) {
+        lastMirror = Date.now();
+        const m = await mirrorTodosOnce(db, hub);
+        if (m.failed) log.warn({ failed: m.failed }, "Integráció: a Teendő-lista nem jutott el a központba; a következő körben újra.");
+      }
     } catch (e) {
       log.warn({ err: e }, "Integráció: hiba az átadó körében.");
     } finally {

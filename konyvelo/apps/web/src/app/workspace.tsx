@@ -22,9 +22,25 @@ const WorkspaceContext = createContext<Workspace | null>(null);
 
 export const fiscalYearsKey = (companyId: string | null) => ["fiscal-years", companyId] as const;
 
+function companyFromLink(me: MeResponse): string | null {
+  if (typeof window === "undefined") return null;
+  const url = new URL(window.location.href);
+  const id = url.searchParams.get("ceg");
+  if (!id) return null;
+  url.searchParams.delete("ceg");
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  return me.companies.some((c) => c.id === id) ? id : null;
+}
+
 /** A választott cég és üzleti év; a választás a böngészőben megmarad. */
 export function WorkspaceProvider({ me, children }: { me: MeResponse; children: ReactNode }) {
-  const [companyId, setCompanyId] = useState<string | null>(() => readSetting("companyId"));
+  // A másik programból (vagy a közös Kezdőlapról) jövő hivatkozás a céget is megadja (`?ceg=`, TERV.md F18):
+  // ha a felhasználónak van hozzáférése, az a cég nyílik meg. A paraméter utána eltűnik a címsorból.
+  const [companyId, setCompanyId] = useState<string | null>(() => {
+    const fromLink = companyFromLink(me);
+    if (fromLink) writeSetting("companyId", fromLink);
+    return fromLink ?? readSetting("companyId");
+  });
   const [fiscalYearId, setFiscalYearId] = useState<string | null>(() => readSetting("fiscalYearId"));
 
   const company = me.companies.find((c) => c.id === companyId) ?? me.companies[0] ?? null;

@@ -895,39 +895,44 @@ export const documentsModule: AppModule = {
     app.get<P>("/api/companies/:companyId/todos", async (request): Promise<TodosDto> => {
       const { companyId } = request.params;
       await requireCompanyPermission(db, request, companyId, "company:read");
-      const today = todayIso();
-      const drafts = await queryDocuments(db, companyId, [sql`d.status = 'DRAFT'`], 1000, 0);
-      const recent = await queryDocuments(db, companyId, [sql`d.status = 'POSTED'`, sql`d.posted_at >= now() - interval '30 days'`], 5000, 0);
-      const accounts = await listAccounts(db, companyId);
-      const open = await openItems(db, companyId, { asOf: today });
-      const overdue = (kind: "RECEIVABLE" | "PAYABLE") => {
-        const list = open.items.filter((i) => i.kind === kind && i.daysOverdue > 0);
-        return { count: list.length, total: list.reduce((s, i) => s + i.open, 0) };
-      };
-      return {
-        nav: await navTodos(db, companyId),
-        integration: await integrationTodosSummary(db, companyId),
-        overdueReceivables: overdue("RECEIVABLE"),
-        overduePayables: overdue("PAYABLE"),
-        unappliedPayments: open.unapplied.length,
-        cashOverLimit: await cashOverLimit(db, companyId),
-        drafts: drafts.rows
-          .map((r) => {
-            const item = listItem(r, today);
-            return {
-              id: r.id,
-              docType: r.doc_type,
-              description: r.description,
-              accountingDate: r.accounting_date,
-              total: item.total,
-              updatedAt: r.updated_at.toISOString(),
-              deadline: item.deadline,
-            };
-          })
-          .sort((a, b) => (a.deadline.deadline < b.deadline.deadline ? -1 : a.deadline.deadline > b.deadline.deadline ? 1 : 0)),
-        latePostedLast30Days: recent.rows.filter((r) => listItem(r, today).deadline.status === "LATE").length,
-        unmappedAccounts: accounts.filter(missingMapping).length,
-      };
+      return companyTodos(db, companyId);
     });
   },
 };
+
+/** A Kezdőlap teendői (a Kezdőlap és a központnak küldött Teendő-tükör közös forrása, TERV.md F18). */
+export async function companyTodos(db: Executor, companyId: string): Promise<TodosDto> {
+  const today = todayIso();
+  const drafts = await queryDocuments(db, companyId, [sql`d.status = 'DRAFT'`], 1000, 0);
+  const recent = await queryDocuments(db, companyId, [sql`d.status = 'POSTED'`, sql`d.posted_at >= now() - interval '30 days'`], 5000, 0);
+  const accounts = await listAccounts(db, companyId);
+  const open = await openItems(db, companyId, { asOf: today });
+  const overdue = (kind: "RECEIVABLE" | "PAYABLE") => {
+    const list = open.items.filter((i) => i.kind === kind && i.daysOverdue > 0);
+    return { count: list.length, total: list.reduce((s, i) => s + i.open, 0) };
+  };
+  return {
+    nav: await navTodos(db, companyId),
+    integration: await integrationTodosSummary(db, companyId),
+    overdueReceivables: overdue("RECEIVABLE"),
+    overduePayables: overdue("PAYABLE"),
+    unappliedPayments: open.unapplied.length,
+    cashOverLimit: await cashOverLimit(db, companyId),
+    drafts: drafts.rows
+      .map((r) => {
+        const item = listItem(r, today);
+        return {
+          id: r.id,
+          docType: r.doc_type,
+          description: r.description,
+          accountingDate: r.accounting_date,
+          total: item.total,
+          updatedAt: r.updated_at.toISOString(),
+          deadline: item.deadline,
+        };
+      })
+      .sort((a, b) => (a.deadline.deadline < b.deadline.deadline ? -1 : a.deadline.deadline > b.deadline.deadline ? 1 : 0)),
+    latePostedLast30Days: recent.rows.filter((r) => listItem(r, today).deadline.status === "LATE").length,
+    unmappedAccounts: accounts.filter(missingMapping).length,
+  };
+}

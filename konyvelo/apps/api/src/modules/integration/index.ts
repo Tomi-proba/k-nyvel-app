@@ -11,8 +11,10 @@ import {
   RECONCILE_RESULT_PATH,
   RECONCILE_VAT_PATH,
   registryOf,
+  resolveModuleLink,
   validateEvent,
   verifyHubRequest,
+  MODULES,
   type InboundResult,
   type Module,
 } from "@konyvelo/esemenyek";
@@ -24,10 +26,13 @@ import {
   type DocumentIntegrationDto,
   type IntegrationStatusDto,
   type IntegrationTodoDto,
+  type SharedTodosDto,
 } from "@konyvelo/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { writeAudit } from "../../core/audit";
+
+const isModule = (m: string): m is Module => (MODULES as readonly string[]).includes(m);
 import { requireCompanyPermission } from "../../core/auth";
 import type { Db, Executor, Tx } from "../../core/db";
 import { AppError, assertUuid, conflict, notFound, parseBody, validationError } from "../../core/errors";
@@ -133,6 +138,8 @@ function hubRoutes(app: FastifyInstance, db: Db, secret: string | null) {
         // A kód mellé az adószám is egyezzen (teljes adószám), de az adószám önmagában soha nem elég.
         if (!company || taxDigits(company.taxNumber) !== tax) throw invalid();
         await tx.update(integrationLinkCodes).set({ usedAt: new Date() }).where(eq(integrationLinkCodes.id, row.id));
+        // Új összekapcsolás: a Teendő-listát (F18) mindenképp újra el kell küldeni.
+        await tx.execute(sql`DELETE FROM integration_todo_mirror WHERE company_id = ${company.id}`);
         const mapping = await defaultAccountMapping(tx, company.id);
         const existing = await settingsOf(tx, company.id);
         const linked = { linkedAt: new Date(), unlinkedAt: null, postingMode: "DRAFT_ONLY" as const, draftOnlyUntil: addMonths(todayIso(), 1), updatedAt: new Date(), updatedBy: SYSTEM_USER_ID };
@@ -338,6 +345,30 @@ export const integrationModule: AppModule = {
       return { ok: true };
     });
 
+    /**
+     * A cég többi programjának Teendői (TERV.md F18, I6). A közös belépésig csak az adminisztrátor és a
+     * vezető könyvelő látja, és csak a címet és a hivatkozást (döntés 2026-11-01). A hivatkozás ugyanabban
+     * a fülben nyílik.
+     */
+    app.get<P>(`${base}/shared-todos`, async (request): Promise<SharedTodosDto> => {
+      const { companyId } = request.params;
+      const { role } = await requireCompanyPermission(db, request, companyId, "company:read");
+      if (role !== "ADMIN" && role !== "CHIEF_ACCOUNTANT") return { state: "NOT_ALLOWED", todos: [], modules: [] };
+      if (!hub) return { state: "NOT_CONFIGURED", todos: [], modules: [] };
+      const s = await settingsOf(db, companyId);
+      if (!s?.linkedAt || s.unlinkedAt) return { state: "NOT_LINKED", todos: [], modules: [] };
+      try {
+        const a = await hub.sharedTodos(companyId);
+        return {
+          state: "OK",
+          todos: a.todos.map((t) => ({ module: t.module, moduleLabel: t.moduleLabel, title: t.title, url: resolveModuleLink(t.link, config.moduleUrls), since: t.since })),
+          modules: a.modules.filter((m) => m.module !== "konyvelo").map((m) => ({ moduleLabel: m.moduleLabel, mirroredAt: m.mirroredAt })),
+        };
+      } catch {
+        return { state: "HUB_UNREACHABLE", todos: [], modules: [] };
+      }
+    });
+
     app.get<P>(`${base}/todos`, async (request) => {
       const { companyId } = request.params;
       await requireCompanyPermission(db, request, companyId, "company:read");
@@ -387,8 +418,8 @@ export const integrationModule: AppModule = {
       if (!doc) throw notFound("A bizonylat nem található.");
       const records = await db.select().from(integrationRecords).where(eq(integrationRecords.documentId, documentId)).orderBy(asc(integrationRecords.createdAt));
       const stock = await db.select().from(documentStockLines).where(eq(documentStockLines.documentId, documentId)).orderBy(asc(documentStockLines.lineNo));
-      const base = (m: string) => (m === "keszlet" ? config.moduleUrls.keszlet : m === "eafa" ? config.moduleUrls.eafa : null);
-      const link = (m: string, url: string | null) => (url && base(m) ? `${base(m)}${url.startsWith("/") ? "" : "/"}${url}` : null);
+      // Programfüggetlen hivatkozás (F18): a program beállított címe + az útvonal; ugyanabban a fülben nyílik.
+      const link = (m: string, url: string | null) => (url && isModule(m) ? resolveModuleLink({ module: m, path: url.startsWith("/") || url.startsWith("#/") ? url : `/${url}` }, config.moduleUrls) : null);
       const origin = records.find((r) => r.kind === "PURCHASE" && r.needsDateChoice);
       const [openReversal] = doc.status === "POSTED" ? await db.select().from(integrationTodos).where(and(eq(integrationTodos.documentId, documentId), eq(integrationTodos.kind, "REVERSAL_APPROVAL"), isNull(integrationTodos.resolvedAt))) : [];
       const reversalRecord = openReversal ? records.filter((r) => r.kind === "REVERSAL").at(-1) : undefined;

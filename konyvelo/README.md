@@ -369,6 +369,16 @@ mint eddig.**
     jelölték, hogy nem kell.
 
   Az egyeztetés ilyenkor a 466-os és 467-es számla forgalmát is összeveti az eÁFA bevallási időszakaival.
+- **Közös Teendők (I6):**
+  - A Könyvelő a Kezdőlap Teendőit elküldi a központnak, hogy a cég többi programja is lássa őket. Kimarad,
+    ami egy másik program állapotának visszhangja, például az egyeztetés vagy az önellenőrzés jelzése.
+  - A Kezdőlapon megjelenik a „A többi program teendői” rész. A közös belépésig csak az adminisztrátor és a
+    vezető könyvelő látja, és csak a címet.
+  - A hivatkozás ugyanabban a fülben nyílik. A másik program addig kérheti a belépést.
+  - A többi program a Könyvelőre mutató hivatkozásban a céget is megadja (`?ceg=`). Ha a felhasználónak
+    van hozzáférése, az a cég nyílik meg.
+  - A lista csak változáskor megy újra, de legalább 10 percenként. Ha a központ nem érhető el, a következő
+    kör pótolja.
 - **Forrásjelölés:** minden ilyen bizonylaton látszik, honnan jött, és mi lett belőle a többi programban.
   Az automatikus műveleteket a belépni nem tudó „Integrációs központ (automatikus)” gépi felhasználó végzi,
   és az audit naplóba kerülnek.

@@ -24,6 +24,7 @@ import { listAccounts } from "../accounts";
 import { createDocument, deleteDraftDocument, postDocument, reverseDocument } from "../documents";
 import { emitPartnerChanged } from "./outbox";
 import { openTodo, resolveTodo } from "./todos";
+import { konyveloPath } from "./links";
 
 /**
  * A beérkező események kezelői (TERV.md F14.1–F14.4). Mindegyik a hívó tranzakciójában dolgozik (a
@@ -903,6 +904,18 @@ async function partnerChanged(ctx: Ctx, p: { partner: { name: string; taxNumber?
 
 /** Egy beérkezett esemény hatása (a bejövő tábla bejegyzésével azonos tranzakcióban). */
 export async function applyInbound(tx: Tx, companyId: string, event: EventEnvelope, settings: Settings): Promise<InboundResult> {
+  return withCompanyLinks(companyId, await applyInboundEvent(tx, companyId, event, settings));
+}
+
+/** A visszaadott hivatkozások a céget is megadják (`?ceg=`, F18), hogy a többi programból a jó cég nyíljon meg. */
+function withCompanyLinks(companyId: string, r: InboundResult): InboundResult {
+  const out: InboundResult = { ...r };
+  if (r.target?.url) out.target = { ...r.target, url: konyveloPath(companyId, r.target.url) };
+  if (r.todo?.url) out.todo = { ...r.todo, url: konyveloPath(companyId, r.todo.url) };
+  return out;
+}
+
+async function applyInboundEvent(tx: Tx, companyId: string, event: EventEnvelope, settings: Settings): Promise<InboundResult> {
   const ctx: Ctx = { tx, companyId, event, settings };
   const payload = event.payload as never;
   switch (`${event.type}@${event.version}`) {

@@ -4,6 +4,7 @@ import { registryOf, validateEvent, type EventEnvelope } from "@konyvelo/esemeny
 import type { Executor, Tx } from "../../core/db";
 import { accounts, documents, documentStockLines, integrationOutbox, integrationProducts, integrationRecords, integrationSettings, journalLines, partners, settlements } from "../../core/schema";
 import { openTodo } from "./todos";
+import { konyveloPath } from "./links";
 
 /**
  * Kimenő események (TERV.md F14.1). Mindig a művelet SAJÁT tranzakciójában: ha a művelet
@@ -53,7 +54,7 @@ export async function emitEvent(tx: Tx, companyId: string, e: OutgoingEvent): Pr
       recordType: e.record.type,
       recordId: e.record.id,
       sequence: await nextSequence(tx, e.record.type, e.record.id),
-      ...(e.record.url ? { url: e.record.url } : {}),
+      ...(e.record.url ? { url: konyveloPath(companyId, e.record.url) } : {}),
       ...(e.record.label ? { label: e.record.label.slice(0, 300) } : {}),
     },
     occurredAt: new Date().toISOString(),

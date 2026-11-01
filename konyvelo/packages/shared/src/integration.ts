@@ -94,6 +94,17 @@ export const APPROVAL_TODO_KINDS: readonly IntegrationTodoKind[] = ["PURCHASE_AP
 
 export type IntegrationTodoDto = { id: string; kind: IntegrationTodoKind; title: string; detail: string | null; documentId: string | null; createdAt: string };
 
+/**
+ * A cég többi programjának Teendői (TERV.md F18, I6): a közös belépésig csak az adminisztrátor és a vezető
+ * könyvelő látja, csak a címet és a hivatkozást (ugyanabban a fülben nyílik).
+ */
+export type SharedTodosDto = {
+  state: "OK" | "NOT_ALLOWED" | "NOT_CONFIGURED" | "NOT_LINKED" | "HUB_UNREACHABLE";
+  todos: Array<{ module: string; moduleLabel: string; title: string; url: string | null; since: string | null }>;
+  /** A többi összekapcsolt program, és mikor küldte utoljára a Teendőit (null: még nem). */
+  modules: Array<{ moduleLabel: string; mirroredAt: string | null }>;
+};
+
 /** A bizonylat kapcsolata a többi modullal („honnan jött?”, „mi lett belőle?”). */
 export type DocumentIntegrationDto = {
   /** Ha az áfás bizonylat az eÁFA-ban már beküldött áfabevallás időszakába esik: figyelmeztetés (F17.2). */

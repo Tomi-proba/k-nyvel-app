@@ -122,6 +122,12 @@ class FakeHub implements HubClient {
   async acceptBaseline(): Promise<never> {
     throw new Error("az egyeztetést a reconcile.test.ts próbálja ki");
   }
+  async mirrorTodos() {
+    return { stored: 0 };
+  }
+  async sharedTodos(): Promise<never> {
+    throw new Error("a közös Teendőket a teendok.test.ts próbálja ki");
+  }
 }
 
 beforeAll(async () => {
@@ -217,7 +223,7 @@ describe("kimenő események", () => {
       "konyvelo.bizonylat.sztornozva@1#2",
     ]);
     const [posted, settled, , unpaired, reversed] = events;
-    expect(posted!.source).toMatchObject({ module: "konyvelo", companyRef: companyId, recordType: "bizonylat", recordId: invoice.id, url: `/konyveles/${invoice.id}` });
+    expect(posted!.source).toMatchObject({ module: "konyvelo", companyRef: companyId, recordType: "bizonylat", recordId: invoice.id, url: `/konyveles/${invoice.id}?ceg=${companyId}` });
     expect(posted!.payload).toMatchObject({
       serialNumber: invoice.serialNumber, docType: "SZSZ", externalNumber: "KI-1", currency: "HUF", partner: { name: "Ajtó Kft.", taxNumber: supplier.taxNumber }, corrects: null, reverses: null,
       lines: [{ accountNumber: "529", side: "D", amount: 100_000 }, { accountNumber: "466", side: "D", amount: 27_000 }, { accountNumber: "454", side: "C", amount: 127_000, partner: { name: "Ajtó Kft." } }],
@@ -739,7 +745,7 @@ describe("beérkező: beszerzés v3, leltár, pénztár, visszáru, sztornó v3 
     expect((await approve([id])).results[0]).toMatchObject({ ok: true, serialNumber: expect.stringMatching(/^PB-/) });
 
     const mod = await deliver(keszletEvent("keszlet.napi_zaras.modosult", 1, "napi_zaras", "Z-1", { closingId: "Z-1", date: "2026-11-18", location: { id: "L", name: "Bolt" }, movementIds: ["M9"] }, 2));
-    expect(mod).toMatchObject({ outcome: "TODO", todo: { url: `/konyveles/${id}` } });
+    expect(mod).toMatchObject({ outcome: "TODO", todo: { url: `/konyveles/${id}?ceg=${companyId}` } });
     expect((await todos()).find((t) => t.kind === "SOURCE_CHANGED" && t.documentId === id)).toBeTruthy();
 
     // Csak visszavétel aznap: pénztárkiadási piszkozat.

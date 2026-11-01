@@ -1,6 +1,8 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { addDays, DOCUMENT_TYPES, formatDateHu, formatHuf, todayIso } from "@konyvelo/domain";
-import { APPROVAL_TODO_KINDS, ROLE_LABELS } from "@konyvelo/shared";
+import { APPROVAL_TODO_KINDS, ROLE_LABELS, type SharedTodosDto } from "@konyvelo/shared";
+import { get } from "../../lib/api";
 import { NEW_ENTRY_PATH } from "../../app/AppLayout";
 import { KeyCombo } from "../../app/shortcuts";
 import { useWorkspace } from "../../app/workspace";
@@ -201,6 +203,42 @@ function TodoCard() {
   );
 }
 
+/**
+ * A cég többi programjának Teendői (TERV.md F18). A közös belépésig csak az adminisztrátor és a vezető
+ * könyvelő látja, csak a címet; a hivatkozás ugyanabban a fülben nyílik (a másik program kérheti a belépést).
+ */
+function SharedTodosCard({ companyId }: { companyId: string }) {
+  const q = useQuery({
+    queryKey: ["shared-todos", companyId],
+    queryFn: () => get<SharedTodosDto>(`/api/companies/${companyId}/integration/shared-todos`),
+    refetchInterval: 60_000,
+  });
+  const d = q.data;
+  if (!d || d.state === "NOT_ALLOWED" || d.state === "NOT_CONFIGURED" || d.state === "NOT_LINKED") return null;
+  return (
+    <section className="card" aria-labelledby="tobbi-program">
+      <h2 id="tobbi-program">A többi program teendői</h2>
+      {d.state === "HUB_UNREACHABLE" ? (
+        <p className="muted">Az integrációs központ most nem érhető el; a lista a következő frissítéskor jelenik meg.</p>
+      ) : d.todos.length === 0 ? (
+        <p className="muted">{d.modules.length ? `Nincs nyitott teendő (${d.modules.map((m) => m.moduleLabel).join(", ")}).` : "Nincs nyitott teendő."}</p>
+      ) : (
+        <ul className="todo-list">
+          {d.todos.map((t, i) => (
+            <li key={i}>
+              <span className="muted">{t.moduleLabel}:</span>{" "}
+              {t.url ? <a href={t.url}>{t.title}</a> : <span>{t.title}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {d.state === "OK" && d.modules.some((m) => !m.mirroredAt) && (
+        <p className="muted small">Még nem küldte el a teendőit: {d.modules.filter((m) => !m.mirroredAt).map((m) => m.moduleLabel).join(", ")}.</p>
+      )}
+    </section>
+  );
+}
+
 export function HomePage() {
   const ws = useWorkspace();
 
@@ -233,6 +271,8 @@ export function HomePage() {
           </h2>
           <TodoCard />
         </section>
+
+        {(ws.company.role === "ADMIN" || ws.company.role === "CHIEF_ACCOUNTANT") && <SharedTodosCard companyId={ws.company.id} />}
 
         <section className="card" aria-labelledby="uzleti-ev">
           <h2 id="uzleti-ev">Üzleti év</h2>

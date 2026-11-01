@@ -232,10 +232,13 @@ describe("a Könyvelő számai a központ kérdésére (E1–E6 könyvelési old
     expect((await admin.delete(`${c()}/documents/${id}`)).statusCode).toBe(200);
     const st = await admin.post(`${c()}/documents/${p1}/reverse`, { accountingDate: "2026-11-20", reason: "Teszt" });
     expect(st.statusCode, st.body).toBe(201);
-    // A törölt piszkozatnak se bizonylata, se dátuma: a központ az átadott esemény azonosítójával kérdez rá.
-    expect((await ask()).records.find((r) => r.sourceRecordId === "B3")).toBeUndefined();
+    // A törölt piszkozatnak se bizonylata, se dátuma: egy későbbi időszakra kérdezve csak az átadott esemény
+    // azonosítójával kerül elő. (A tétel ma keletkezett, ezért a kérdés időszaka a jövőben van: így a teszt
+    // nem függ attól, melyik napon fut.)
+    const later = { asOf: "2100-01-31", from: "2100-01-01", to: "2100-01-31" };
+    expect((await ask(later)).records.find((r) => r.sourceRecordId === "B3")).toBeUndefined();
+    expect((await ask({ ...later, events: [b3.id] })).records.find((r) => r.sourceRecordId === "B3")).toMatchObject({ status: "DELETED", documentId: null, expectedAmount: 1_270_00 });
     const a = await ask({ events: [b3.id] });
-    expect(a.records.find((r) => r.sourceRecordId === "B3")).toMatchObject({ status: "DELETED", documentId: null, expectedAmount: 1_270_00 });
     expect(a.records.find((r) => r.sourceRecordId === "B1")).toMatchObject({ status: "REVERSED" });
     expect(a.paid.find((p) => p.sourceRecordId === "B1")).toBeUndefined();
   });
