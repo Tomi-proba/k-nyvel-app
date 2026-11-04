@@ -9,6 +9,7 @@ import { buildApp } from "../src/app";
 import { loadConfig, type Config } from "../src/config";
 import { createDb, type Db } from "../src/core/db";
 import { runMigrations } from "../src/core/migrate";
+import { totpKod, totpLepes } from "../src/core/totp";
 
 function testUrls() {
   const appUrl = process.env.TEST_DATABASE_URL;
@@ -59,6 +60,44 @@ export async function appQuery(sql: string, params: unknown[] = []): Promise<pg.
   }
 }
 
+/** Melyik adatbázison fut az alkalmazás (a kétlépcsős kód ismétlésvédelmének visszaállításához). */
+const appUrls = new WeakMap<FastifyInstance, string>();
+/** A tesztfelhasználók TOTP-titkai e-mail-cím szerint (a helperek ebből számolják a kódot). */
+export const totpTitkok = new Map<string, string>();
+
+/** Az aktuális kód a felhasználó titkával. Az ismétlésvédelmet (ugyanaz a kód kétszer nem jó) a tesztben
+ *  visszaállítjuk, hogy egy 30 mp-es lépésen belül többször is be lehessen lépni. */
+export async function aktualisKod(app: FastifyInstance, email: string): Promise<string> {
+  const titok = totpTitkok.get(email.toLowerCase());
+  if (!titok) throw new Error(`Nincs TOTP-titok a teszthez: ${email}`);
+  const url = appUrls.get(app);
+  if (url) {
+    const client = new pg.Client({ connectionString: url });
+    await client.connect();
+    try {
+      await client.query("UPDATE users SET totp_last_step = NULL WHERE lower(email) = lower($1)", [email]);
+    } finally {
+      await client.end();
+    }
+  }
+  return totpKod(titok, totpLepes());
+}
+
+/** A jelszó utáni lépés: a kód megadása, vagy első alkalommal a kétlépcsős azonosítás beállítása. */
+export async function ketlepcsos(app: FastifyInstance, client: Client, email: string, kovetkezo: string): Promise<void> {
+  if (kovetkezo === "totp-beallitas") {
+    const b = await client.post("/api/auth/totp/beallitas");
+    if (b.statusCode !== 200) throw new Error(`2FA-beállítás sikertelen: ${b.body}`);
+    const titok = b.json().titok as string;
+    totpTitkok.set(email.toLowerCase(), titok);
+    const a = await client.post("/api/auth/totp/aktivalas", { kod: totpKod(titok, totpLepes()) });
+    if (a.statusCode !== 200) throw new Error(`2FA-bekapcsolás sikertelen: ${a.body}`);
+    return;
+  }
+  const r = await client.post("/api/auth/totp/ellenorzes", { kod: await aktualisKod(app, email) });
+  if (r.statusCode !== 200) throw new Error(`2FA-ellenőrzés sikertelen: ${r.body}`);
+}
+
 export type TestContext = { app: FastifyInstance; db: Db; config: Config; close: () => Promise<void> };
 
 export async function createTestApp(overrides: Partial<Config> = {}, databaseUrl?: string): Promise<TestContext> {
@@ -74,6 +113,7 @@ export async function createTestApp(overrides: Partial<Config> = {}, databaseUrl
   const { db, pool } = createDb(appUrl);
   const app = await buildApp(config, db);
   await app.ready();
+  appUrls.set(app, appUrl);
   return {
     app,
     db,
@@ -136,6 +176,7 @@ export async function setupAdmin(app: FastifyInstance, email = "admin@example.hu
   const client = new Client(app);
   const res = await client.post("/api/setup", { name: "Admin Anna", email, password: PASSWORD });
   if (res.statusCode !== 201) throw new Error(`Setup sikertelen: ${res.body}`);
+  await ketlepcsos(app, client, email, res.json().kovetkezo);
   return client;
 }
 
@@ -143,6 +184,7 @@ export async function login(app: FastifyInstance, email: string, password = PASS
   const client = new Client(app);
   const res = await client.post("/api/auth/login", { email, password });
   if (res.statusCode !== 200) throw new Error(`Belépés sikertelen: ${res.body}`);
+  await ketlepcsos(app, client, email, res.json().kovetkezo);
   return client;
 }
 

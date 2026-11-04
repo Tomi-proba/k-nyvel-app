@@ -15,7 +15,7 @@ afterAll(async () => ctx.close());
 describe("első indítás és belépés", () => {
   it("üres rendszerben beállítás szükséges", async () => {
     const res = await new Client(ctx.app).get("/api/setup/status");
-    expect(res.json()).toEqual({ needsSetup: true });
+    expect(res.json()).toMatchObject({ needsSetup: true });
   });
 
   it("gyenge jelszót elutasít magyar hibaüzenettel", async () => {
@@ -34,7 +34,7 @@ describe("első indítás és belépés", () => {
   it("második beállítás nem lehetséges", async () => {
     const res = await new Client(ctx.app).post("/api/setup", { name: "B", email: "b@example.hu", password: PASSWORD });
     expect(res.statusCode).toBe(409);
-    expect((await new Client(ctx.app).get("/api/setup/status")).json()).toEqual({ needsSetup: false });
+    expect((await new Client(ctx.app).get("/api/setup/status")).json()).toMatchObject({ needsSetup: false });
   });
 
   it("bejelentkezés nélkül nincs hozzáférés", async () => {

@@ -1,5 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import pg from "pg";
+import { totpKod, totpLepes } from "../apps/api/src/core/totp";
 
 /**
  * Végponttól végpontig: első indítás, cég és üzleti év felvétele,
@@ -27,10 +29,35 @@ async function expectAccessible(page: Page, label: string) {
 /** Összeg a mezőben: az ezres tagolás nem törő szóköz. */
 const amount = (text: string) => new RegExp(`^${text.replace(/ /g, "\\s")}$`);
 
+try {
+  process.loadEnvFile(".env");
+} catch {
+  // környezeti változók kívülről (CI)
+}
+
+/** Az adminisztrátor TOTP-titka (az első indításkor állítja be). */
+let totpTitok = "";
+
+/** A kétlépcsős kód; az ismétlésvédelmet (ugyanaz a kód kétszer nem jó) a teszt-adatbázisban visszaállítjuk,
+ *  hogy egy 30 mp-es lépésen belül többször is be lehessen lépni. */
+async function aktualisKod(): Promise<string> {
+  const c = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL });
+  await c.connect();
+  try {
+    await c.query("UPDATE users SET totp_last_step = NULL WHERE email = $1", [ADMIN.email]);
+  } finally {
+    await c.end();
+  }
+  return totpKod(totpTitok, totpLepes());
+}
+
 async function login(page: Page) {
   await page.goto("/");
   await page.getByLabel("E-mail-cím").fill(ADMIN.email);
   await page.getByLabel("Jelszó").fill(ADMIN.password);
+  await page.getByRole("button", { name: "Belépés" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Kétlépcsős azonosítás" })).toBeVisible();
+  await page.getByLabel("6 jegyű kód a hitelesítő alkalmazásból").fill(await aktualisKod());
   await page.getByRole("button", { name: "Belépés" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Kezdőlap" })).toBeVisible();
 }
@@ -50,6 +77,17 @@ test("első indítás: hibaüzenetek, majd az első felhasználó létrehozása"
   await expect(page.getByText("A jelszó legalább 12 karakter legyen.")).toBeVisible();
   await page.getByLabel("Jelszó").fill(ADMIN.password);
   await page.getByRole("button", { name: "Létrehozás és belépés" }).click();
+
+  // A kétlépcsős azonosítás mindenkinek kötelező: az első adminisztrátor is beállítja.
+  await expect(page.getByRole("heading", { level: 1, name: "Kétlépcsős azonosítás beállítása" })).toBeVisible();
+  await page.getByRole("button", { name: "QR-kód kérése" }).click();
+  await expect(page.getByRole("img", { name: "QR-kód a hitelesítő alkalmazáshoz" })).toBeVisible();
+  await expectAccessible(page, "Kétlépcsős azonosítás beállítása");
+  totpTitok = (await page.locator("[data-totp-titok]").textContent())!.trim();
+  await page.getByLabel("6 jegyű kód").fill(totpKod(totpTitok, totpLepes()));
+  await page.getByRole("button", { name: "Bekapcsolás" }).click();
+  await expect(page.locator("[data-visszaallito-kodok] li")).toHaveCount(10);
+  await page.getByRole("button", { name: "Felírtam, tovább" }).click();
 
   await expect(page.getByRole("heading", { level: 1, name: "Kezdőlap" })).toBeVisible();
   await expect(page.getByText("Még nincs cége")).toBeVisible();

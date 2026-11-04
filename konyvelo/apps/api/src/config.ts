@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { JWTVerifyGetKey } from "jose";
 import type { FileStoreConfig } from "./core/filestore";
 
 export type Config = {
@@ -11,8 +12,18 @@ export type Config = {
   migrationDatabaseUrl: string;
   /** Éles környezetben a munkamenet-süti csak HTTPS-en megy át. */
   cookieSecure: boolean;
-  /** Munkamenet lejárata tétlenség esetén (perc). */
+  /** Munkamenet lejárata tétlenség esetén (perc). Alapból 30 perc (közös belépés, TERV.md F21). */
   sessionIdleMinutes: number;
+  /** A munkamenet abszolút felső határa (óra), tétlenségtől függetlenül: legfeljebb 12. */
+  sessionMaxHours: number;
+  /** 32 bájtos kulcs a TOTP-titkok titkosításához (TOTP_KULCS, base64). Élesben kötelező. */
+  totpKey: Buffer;
+  /**
+   * Közös belépés a portálon át (SSO_ENGEDELYEZVE=true). A régi belépés (REGI_BELEPES, alapból true) csak
+   * akkor kapcsolható ki ténylegesen, ha minden aktív felhasználó összekapcsolta a fiókját (lásd modules/sso).
+   */
+  sso: { kiado: string; jwksUrl: string; portalUrl: string; /** Csak teszthez: a JWKS helyett ezek a kulcsok. */ keys?: JWTVerifyGetKey } | null;
+  regiBelepes: boolean;
   /** A lefordított felület (apps/web/dist) – ha létezik, a szerver ezt is kiszolgálja. */
   webDistDir: string | null;
   trustProxy: boolean;
@@ -55,7 +66,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl,
     migrationDatabaseUrl: env.DATABASE_MIGRATION_URL ?? databaseUrl,
     cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE === "true" : production,
-    sessionIdleMinutes: Number(env.SESSION_IDLE_MINUTES ?? 12 * 60),
+    sessionIdleMinutes: Number(env.SESSION_IDLE_MINUTES ?? 30),
+    sessionMaxHours: Math.min(12, Number(env.SESSION_MAX_HOURS ?? 12)),
+    totpKey: totpKeyConfig(env, production),
+    sso: ssoConfig(env),
+    regiBelepes: env.REGI_BELEPES !== "false",
     webDistDir: env.WEB_DIST_DIR ?? defaultWebDist,
     trustProxy: env.TRUST_PROXY === "true",
     logLevel: env.LOG_LEVEL ?? (production ? "info" : "warn"),
@@ -69,6 +84,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       .map((s) => s.trim().replace(/\/$/, ""))
       .filter(Boolean),
   };
+}
+
+const DEV_TOTP_KEY = Buffer.alloc(32, 11);
+
+function totpKeyConfig(env: NodeJS.ProcessEnv, production: boolean): Buffer {
+  const raw = env.TOTP_KULCS?.trim();
+  if (!raw) {
+    if (production) throw new Error("Élesben a TOTP_KULCS kötelező (32 bájt base64-ben: openssl rand -base64 32).");
+    return DEV_TOTP_KEY;
+  }
+  const key = Buffer.from(raw, "base64");
+  if (key.length !== 32) throw new Error("A TOTP_KULCS 32 bájt legyen, base64-ben (openssl rand -base64 32).");
+  return key;
+}
+
+/** SSO_ENGEDELYEZVE=true esetén PORTAL_URL kell; a kiadó és a JWKS címe alapból ebből számolódik. */
+function ssoConfig(env: NodeJS.ProcessEnv): Config["sso"] {
+  if (env.SSO_ENGEDELYEZVE !== "true") return null;
+  const portalUrl = env.PORTAL_URL?.trim().replace(/\/$/, "");
+  if (!portalUrl) throw new Error("A közös belépéshez (SSO_ENGEDELYEZVE=true) a PORTAL_URL is kell.");
+  const kiado = env.SSO_KIADO?.trim().replace(/\/$/, "") || portalUrl;
+  return { kiado, portalUrl, jwksUrl: env.SSO_JWKS_URL?.trim() || `${kiado}/.well-known/jwks.json` };
 }
 
 /** A központ címe és a Könyvelő titka (a központban KOZPONT_KONYVELO_TITOK), legalább 32 karakter. */

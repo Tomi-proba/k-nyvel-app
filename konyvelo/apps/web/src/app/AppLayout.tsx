@@ -118,7 +118,9 @@ export function AppLayout() {
             type="button"
             className="btn btn-small"
             onClick={async () => {
-              await post("/api/auth/logout").catch(() => {});
+              // Közös belépésnél a kijelentkezés a portálon folytatódik (onnan minden modulból kilép).
+              const r = await post<{ portalKilepes?: string | null }>("/api/auth/logout").catch(() => null);
+              if (r?.portalKilepes) return location.assign(r.portalKilepes);
               queryClient.clear();
               navigate("/");
               await queryClient.invalidateQueries();

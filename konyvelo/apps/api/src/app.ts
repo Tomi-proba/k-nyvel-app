@@ -13,6 +13,7 @@ import { createFileStore, type FileStore } from "./core/filestore";
 import { accountsModule } from "./modules/accounts";
 import { auditModule } from "./modules/audit";
 import { authModule } from "./modules/auth";
+import { ssoModule } from "./modules/sso";
 import { companiesModule } from "./modules/companies";
 import { fiscalYearsModule } from "./modules/fiscal-years";
 import { documentsModule } from "./modules/documents";
@@ -29,6 +30,7 @@ import { exportModule } from "./modules/export";
 /** A bekapcsolt modulok. Új modul felvétele: ide kell beírni. */
 export const MODULES: AppModule[] = [
   authModule,
+  ssoModule,
   companiesModule,
   fiscalYearsModule,
   accountsModule,
@@ -66,11 +68,14 @@ export async function buildApp(config: Config, db: Db, files: FileStore = create
 
   app.decorateRequest("authUser", null);
   app.decorateRequest("sessionId", null);
+  app.decorateRequest("session", null);
+  app.decorateRequest("partialUser", null);
 
   app.addHook("onRequest", async (request, reply) => {
     if (!request.url.startsWith("/api/")) return;
     // A központ felőli végpontokat aláírás védi (munkamenet és CSRF-fejléc nélkül), lásd modules/integration.
-    if (request.url.startsWith("/api/integracio/")) {
+    // A portál kilépési jelzése szerverről szerverre jön, aláírt jeggyel (lásd modules/sso).
+    if (request.url.startsWith("/api/integracio/") || request.url === "/api/auth/sso/kilepes") {
       reply.header("Cache-Control", "no-store");
       return;
     }
@@ -94,8 +99,11 @@ export async function buildApp(config: Config, db: Db, files: FileStore = create
 
     const session = await loadSession(db, config, request.cookies[SESSION_COOKIE]);
     if (session) {
-      request.authUser = session.user;
-      request.sessionId = session.sessionId;
+      request.sessionId = session.session.id;
+      request.session = session.session;
+      // Kétlépcsős azonosítás nélkül a felhasználó csak a 2FA-végpontokat éri el (requirePartialUser).
+      if (session.session.aal === 2) request.authUser = session.user;
+      else request.partialUser = session.user;
     }
   });
 

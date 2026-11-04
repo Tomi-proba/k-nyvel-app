@@ -14,6 +14,9 @@ export const CSRF_HEADER = "x-konyvelo-csrf";
 export type MeResponse = {
   user: { id: string; email: string; name: string; mustChangePassword: boolean };
   companies: Array<{ id: string; name: string; shortName: string; role: Role }>;
+  /** Közös belépéssel (a portálról) lépett be. */
+  sso: boolean;
+  portalUrl: string | null;
 };
 
 export type CompanyDto = {

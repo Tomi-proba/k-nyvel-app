@@ -23,9 +23,22 @@ function AuthShell({ title, intro, children }: { title: string; intro?: string; 
   );
 }
 
-export function LoginPage() {
+export type SetupStatus = { needsSetup: boolean; regiBelepes: boolean; portalUrl: string | null };
+
+export function LoginPage({ status }: { status: SetupStatus }) {
   const queryClient = useQueryClient();
   const form = useZodForm(loginSchema, { email: "", password: "" });
+  if (!status.regiBelepes && status.portalUrl) {
+    return (
+      <AuthShell title="Bejelentkezés" intro="A Könyvelőbe a közös portálon át lehet belépni (egy belépés minden programhoz, kétlépcsős azonosítással).">
+        <div className="form-actions">
+          <a className="btn btn-primary" href={status.portalUrl}>
+            Belépés a portálon
+          </a>
+        </div>
+      </AuthShell>
+    );
+  }
   return (
     <AuthShell title="Bejelentkezés">
       <form
@@ -71,6 +84,11 @@ export function LoginPage() {
           </button>
         </div>
       </form>
+      {status.portalUrl && (
+        <p className="muted">
+          Vagy: <a href={status.portalUrl}>belépés a közös portálon</a> (egy belépés minden programhoz).
+        </p>
+      )}
     </AuthShell>
   );
 }

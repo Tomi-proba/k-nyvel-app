@@ -18,6 +18,10 @@ export const users = pgTable("users", {
   /** A gépi felhasználó (integráció): belépni nem tud, cégnek nem tagja. */
   isSystem: boolean("is_system").notNull().default(false),
   mustChangePassword: boolean("must_change_password").notNull().default(false),
+  /** Kétlépcsős azonosítás (TOTP): a titok titkosítva; bekapcsolva, ha totpEnabledAt nem null. */
+  totpSecret: text("totp_secret"),
+  totpEnabledAt: ts("totp_enabled_at"),
+  totpLastStep: bigint("totp_last_step", { mode: "number" }),
   lastLoginAt: ts("last_login_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
   createdBy: uuid("created_by"),
@@ -32,13 +36,66 @@ export const sessions = pgTable("sessions", {
   expiresAt: ts("expires_at").notNull(),
   ip: text("ip"),
   userAgent: text("user_agent"),
+  /** 1: csak jelszó (a kétlépcsős kód még hiányzik), 2: teljes belépés. */
+  aal: smallint("aal").notNull().default(1),
+  portalSid: text("portal_sid"),
+  portalSub: text("portal_sub"),
+  portalCompanyId: uuid("portal_company_id"),
+  idleMinutes: integer("idle_minutes"),
+  maxExpiresAt: ts("max_expires_at"),
+});
+
+export const userRecoveryCodes = pgTable("user_recovery_codes", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: uuid("user_id").notNull(),
+  codeHash: text("code_hash").notNull(),
+  usedAt: ts("used_at"),
+});
+
+export const ssoLinks = pgTable("sso_links", {
+  portalSub: text("portal_sub").primaryKey(),
+  userId: uuid("user_id").notNull(),
+  linkedAt: ts("linked_at").notNull().defaultNow(),
+  method: text("method").notNull().$type<"REGI_BELEPES" | "UJ_FIOK">(),
+});
+
+export const ssoUsedTickets = pgTable("sso_used_tickets", {
+  jti: text("jti").primaryKey(),
+  expiresAt: ts("expires_at").notNull(),
+});
+
+export const ssoPending = pgTable("sso_pending", {
+  tokenHash: text("token_hash").primaryKey(),
+  portalSub: text("portal_sub").notNull(),
+  portalSid: text("portal_sid").notNull(),
+  email: text("email").notNull(),
+  name: text("name").notNull(),
+  portalCompanyId: uuid("portal_company_id").notNull(),
+  portalRole: text("portal_role").notNull(),
+  moduleRole: text("module_role"),
+  idleMinutes: integer("idle_minutes").notNull(),
+  expiresAt: ts("expires_at").notNull(),
 });
 
 export const authEvents = pgTable("auth_events", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   userId: uuid("user_id"),
   email: text("email"),
-  event: text("event").notNull().$type<"LOGIN_SUCCESS" | "LOGIN_FAILURE" | "LOGIN_BLOCKED" | "LOGOUT" | "PASSWORD_CHANGED">(),
+  event: text("event").notNull().$type<
+      | "LOGIN_SUCCESS"
+      | "LOGIN_FAILURE"
+      | "LOGIN_BLOCKED"
+      | "LOGOUT"
+      | "PASSWORD_CHANGED"
+      | "TOTP_ENABLED"
+      | "TOTP_SUCCESS"
+      | "TOTP_FAILURE"
+      | "RECOVERY_CODE_USED"
+      | "SSO_LOGIN"
+      | "SSO_FAILURE"
+      | "SSO_LINKED"
+      | "SSO_LOGOUT"
+    >(),
   ip: text("ip"),
   userAgent: text("user_agent"),
   at: ts("at").notNull().defaultNow(),
@@ -64,6 +121,8 @@ export const companies = pgTable("companies", {
   reversalMethod: text("reversal_method").notNull().default("SWAP").$type<"SWAP" | "NEGATIVE">(),
   cashClosingLimit: bigint("cash_closing_limit", { mode: "number" }),
   audited: boolean("audited").notNull().default(false),
+  /** A cég párja a portálon (közös belépés); null: nincs összerendelve. */
+  portalCompanyId: uuid("portal_company_id"),
   createdAt: ts("created_at").notNull().defaultNow(),
   createdBy: uuid("created_by").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),

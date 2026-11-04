@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { memberAddSchema, PASSWORD_MIN_LENGTH, ROLE_DESCRIPTIONS, ROLE_LABELS, ROLES, type MemberDto, type Role } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";
+import { AtallasiLista } from "../auth/KozosBelepes";
 import { del, get, patch, post } from "../../lib/api";
 import { formatDateHu } from "../../lib/format";
 import { submitOnCtrlEnter, useZodForm } from "../../lib/form";
@@ -184,6 +185,7 @@ export function MembersPage() {
         </div>
       )}
       <AddMemberForm companyId={companyId} />
+      {ws.can("members:manage") && <AtallasiLista />}
     </>
   );
 }

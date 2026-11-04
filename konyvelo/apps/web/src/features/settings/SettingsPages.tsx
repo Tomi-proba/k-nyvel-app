@@ -1,3 +1,4 @@
+import { PortalCegOsszerendeles } from "../auth/KozosBelepes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
@@ -75,6 +76,7 @@ export function CompanySettingsPage() {
           }}
         />
       )}
+      {companyId && <PortalCegOsszerendeles companyId={companyId} sso={ws.me.sso} admin={ws.can("members:manage")} />}
     </>
   );
 }

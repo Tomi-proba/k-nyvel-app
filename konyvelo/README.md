@@ -394,6 +394,22 @@ mint eddig.**
   (`FORRAS.json`), a teszt jelzi, ha valaki helyben átírná. Frissítés: az AWEBOLDAL-ban
   `npm run masol -w @aweboldal/esemenyek -- ../k-nyvel-app/konyvelo/packages/esemenyek`.
 
+## Belépés: kötelező kétlépcsős azonosítás és közös belépés
+
+- **Kétlépcsős azonosítás mindenkinek kötelező.** A jelszó után a hitelesítő alkalmazás 6 jegyű kódja kell; első
+  belépéskor a program végigvezet a beállításon (QR-kód, majd 10 egyszer használható visszaállító kód). Kód nélkül
+  semmi nem érhető el. A régi, jelszavas munkamenetek a frissítés után kódot kérnek; adat nem vész el.
+- **Tétlenség:** 30 perc után a munkamenet lejár; tétlenségtől függetlenül legfeljebb 12 óráig él.
+- **Közös belépés** (`SSO_ENGEDELYEZVE=true`, `PORTAL_URL`): a portálról nyitva a Könyvelő a portál egyszer használható,
+  kétlépcsős belépéssel kiadott jegyével lép be (`/sso`). A meglévő fiókot egyszer kell összekapcsolni a régi
+  belépéssel (jelszó + kód); pusztán az e-mail-cím egyezése nem elég. A cég-adminisztrátor a Beállítások →
+  Cégadatok oldalon összerendelheti a céget a portál cégével: ezután a portálon felvett munkatársak fiókja magától
+  létrejön. Kijelentkezéskor a portál minden programból kiléptet (a Könyvelő a `POST /api/auth/sso/kilepes`
+  végponton kapja az aláírt jelzést).
+- **Régi belépés kapcsolója** (`REGI_BELEPES=false`): csak akkor kapcsol ki ténylegesen, ha minden aktív felhasználó
+  összekapcsolta a fiókját; addig a régi belépés marad, hogy senki ne zárja ki magát. Az állapot a Beállítások →
+  Felhasználók oldal átállási listáján látszik.
+
 ## Éles futtatás (egyszerű)
 
 ```bash

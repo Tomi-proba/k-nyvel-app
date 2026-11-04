@@ -2,11 +2,12 @@ import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-quer
 import * as RadixTooltip from "@radix-ui/react-tooltip";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router";
 import type { MeResponse } from "@konyvelo/shared";
 import { AppLayout, NEW_ENTRY_PATH } from "./app/AppLayout";
 import { WorkspaceProvider } from "./app/workspace";
-import { ForcedPasswordChangePage, LoginPage, SetupPage } from "./features/auth/AuthPages";
+import { ForcedPasswordChangePage, LoginPage, SetupPage, type SetupStatus } from "./features/auth/AuthPages";
+import { KetlepcsosPage, SsoPage } from "./features/auth/KozosBelepes";
 import { ChartOfAccountsPage } from "./features/accounts/ChartOfAccountsPage";
 import { DocumentPage, DocumentsPage, NewDocumentPage } from "./features/documents/DocumentsPages";
 import { MoneyPage } from "./features/subledger/MoneyPage";
@@ -50,14 +51,22 @@ function NotFound() {
 }
 
 function Root() {
-  const setup = useQuery({ queryKey: ["setup-status"], queryFn: () => get<{ needsSetup: boolean }>("/api/setup/status") });
+  const { pathname } = useLocation();
+  // A portálról nyitott belépés (#jegy=…) a bejelentkezési állapottól függetlenül itt kezdődik.
+  if (pathname === "/sso") return <SsoPage />;
+  return <Belepve />;
+}
+
+function Belepve() {
+  const setup = useQuery({ queryKey: ["setup-status"], queryFn: () => get<SetupStatus>("/api/setup/status") });
   const me = useQuery({
     queryKey: ["me"],
-    queryFn: async () => {
+    // 401-nél a hibakód mondja meg, hiányzik-e a kétlépcsős kód (vagy annak beállítása).
+    queryFn: async (): Promise<{ me: MeResponse | null; hianyzik: string | null }> => {
       try {
-        return await get<MeResponse>("/api/auth/me");
+        return { me: await get<MeResponse>("/api/auth/me"), hianyzik: null };
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) return null;
+        if (err instanceof ApiError && err.status === 401) return { me: null, hianyzik: err.code };
         throw err;
       }
     },
@@ -81,11 +90,14 @@ function Root() {
     );
   }
   if (setup.data?.needsSetup) return <SetupPage />;
-  if (!me.data) return <LoginPage />;
-  if (me.data.user.mustChangePassword) return <ForcedPasswordChangePage />;
+  if (me.data?.hianyzik === "TOTP_REQUIRED") return <KetlepcsosPage beallitas={false} />;
+  if (me.data?.hianyzik === "TOTP_SETUP_REQUIRED") return <KetlepcsosPage beallitas />;
+  if (!me.data?.me) return <LoginPage status={setup.data!} />;
+  if (me.data.me.user.mustChangePassword) return <ForcedPasswordChangePage />;
+  const data = me.data.me;
 
   return (
-    <WorkspaceProvider me={me.data}>
+    <WorkspaceProvider me={data}>
       <Routes>
         <Route element={<AppLayout />}>
           <Route index element={<HomePage />} />
@@ -110,7 +122,7 @@ function Root() {
           <Route path="zaras/nyitas" element={<OpeningPage />} />
           <Route path="sugo" element={<HelpPage />} />
           <Route path="beallitasok" element={<SettingsLayout />}>
-            <Route index element={<Navigate to={me.data.companies.length ? "ceg" : "jelszo"} replace />} />
+            <Route index element={<Navigate to={data.companies.length ? "ceg" : "jelszo"} replace />} />
             <Route path="ceg" element={<CompanySettingsPage />} />
             <Route path="uzleti-evek" element={<FiscalYearsPage />} />
             <Route path="szamlatukor" element={<ChartOfAccountsPage />} />

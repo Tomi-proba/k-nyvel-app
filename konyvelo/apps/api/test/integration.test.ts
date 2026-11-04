@@ -345,7 +345,7 @@ describe("megszakadt átadás", () => {
   it("a gépi felhasználó nem vehető fel cégtagnak, és nem számít az első indításnál", async () => {
     const r = await admin.post(`${c()}/members`, { email: "integracio@rendszer.invalid", role: "ADMIN" });
     expect(r.statusCode).toBe(422);
-    expect((await ctx.app.inject({ method: "GET", url: "/api/setup/status" })).json()).toEqual({ needsSetup: false });
+    expect((await ctx.app.inject({ method: "GET", url: "/api/setup/status" })).json()).toMatchObject({ needsSetup: false });
     expect((await ownerQuery("SELECT count(*)::int AS n FROM company_memberships WHERE user_id = '00000000-0000-4000-8000-00000000c0de'")).rows[0].n).toBe(0);
   });
 });

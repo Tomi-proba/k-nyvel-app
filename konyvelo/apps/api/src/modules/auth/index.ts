@@ -1,18 +1,33 @@
 import { and, count, eq, gt, ne, sql } from "drizzle-orm";
 import { changePasswordSchema, loginSchema, setupSchema, type MeResponse } from "@konyvelo/shared";
 import { writeAudit } from "../../core/audit";
+import QRCode from "qrcode";
+import { z } from "zod";
 import {
   burnPasswordCheck,
   clearSessionCookie,
   createSession,
+  elevateSession,
   hashPassword,
+  requirePartialUser,
   requireUser,
   setSessionCookie,
   verifyPassword,
 } from "../../core/auth";
+import { activateTotp, startTotpSetup, verifySecondFactor } from "../../core/ketlepcsos";
+import { otpauthUrl } from "../../core/totp";
 import { AppError, conflict, parseBody, validationError } from "../../core/errors";
+import { regiBelepesAktiv } from "../sso";
 import type { AppModule } from "../../core/modules";
 import { authEvents, companies, companyMemberships, sessions, users } from "../../core/schema";
+
+const kodSchema = z.object({ kod: z.string({ error: "Kód: kötelező mező." }).trim().regex(/^\d{6}$/, "A kód 6 számjegy.") });
+const ellenorzesSchema = z
+  .object({ kod: z.string().trim().optional(), visszaallitoKod: z.string().trim().min(4).optional() })
+  .refine((v) => v.kod || v.visszaallitoKod, { message: "Adja meg a kódot.", path: ["kod"] });
+
+/** A jelszó után mi következik: a kód megadása, vagy (első alkalommal) a kétlépcsős azonosítás beállítása. */
+export type Kovetkezo = "totp" | "totp-beallitas";
 
 /** Belépési kísérletek korlátozása (15 perces ablak). */
 const LOCK_WINDOW_MINUTES = 15;
@@ -26,7 +41,11 @@ export const authModule: AppModule = {
     app.get("/api/setup/status", async () => {
       // A gépi felhasználó (integráció) nem számít: első indításkor csak ő van.
       const [row] = await db.select({ n: count() }).from(users).where(eq(users.isSystem, false));
-      return { needsSetup: (row?.n ?? 0) === 0 };
+      return {
+        needsSetup: (row?.n ?? 0) === 0,
+        regiBelepes: await regiBelepesAktiv(db, config),
+        portalUrl: config.sso?.portalUrl ?? null,
+      };
     });
 
     /** Az első (adminisztrátor) felhasználó létrehozása – csak üres rendszerben. */
@@ -53,12 +72,16 @@ export const authModule: AppModule = {
         });
         return created!;
       });
+      // Az első adminisztrátornak is kötelező a kétlépcsős azonosítás: a munkamenet addig félig belépett.
       const token = await createSession(db, config, user.id, { ip: request.ip, userAgent: request.headers["user-agent"] });
       setSessionCookie(reply, config, token);
-      return reply.code(201).send({ ok: true });
+      return reply.code(201).send({ ok: true, kovetkezo: "totp-beallitas" satisfies Kovetkezo });
     });
 
     app.post("/api/auth/login", async (request, reply) => {
+      if (!(await regiBelepesAktiv(db, config))) {
+        throw new AppError(403, "REGI_BELEPES_KIKAPCSOLVA", "A belépés a portálon át történik.");
+      }
       const input = parseBody(loginSchema, request.body);
       const since = sql`now() - make_interval(mins => ${LOCK_WINDOW_MINUTES})`;
       const ua = request.headers["user-agent"]?.slice(0, 300) ?? null;
@@ -94,8 +117,35 @@ export const authModule: AppModule = {
 
       await db.insert(authEvents).values({ userId: user.id, email: input.email, event: "LOGIN_SUCCESS", ip: request.ip, userAgent: ua });
       await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+      // A jelszó után a munkamenet félig belépett (aal 1): a kétlépcsős kód nélkül semmi nem érhető el.
       const token = await createSession(db, config, user.id, { ip: request.ip, userAgent: request.headers["user-agent"] });
       setSessionCookie(reply, config, token);
+      return { ok: true, kovetkezo: (user.totpEnabledAt ? "totp" : "totp-beallitas") satisfies Kovetkezo };
+    });
+
+    /** Kétlépcsős azonosítás beállítása: új titok és QR-kód (csak ha még nincs bekapcsolva). */
+    app.post("/api/auth/totp/beallitas", async (request) => {
+      const { user } = requirePartialUser(request);
+      const titok = await startTotpSetup(db, config, user.id);
+      const url = otpauthUrl(titok, user.email);
+      return { titok, otpauthUrl: url, qr: await QRCode.toDataURL(url, { margin: 1, width: 220 }) };
+    });
+
+    /** Bekapcsolás az első kóddal; a válaszban a 10 visszaállító kód (csak most látható). */
+    app.post("/api/auth/totp/aktivalas", async (request) => {
+      const { user, session } = requirePartialUser(request);
+      const { kod } = parseBody(kodSchema, request.body);
+      const visszaallitoKodok = await activateTotp(db, config, user.id, kod, request.ip);
+      await elevateSession(db, config, session.id);
+      return { ok: true, visszaallitoKodok };
+    });
+
+    /** A kód (vagy egy visszaállító kód) megadása a jelszó után. */
+    app.post("/api/auth/totp/ellenorzes", async (request) => {
+      const { user, session } = requirePartialUser(request);
+      const input = parseBody(ellenorzesSchema, request.body);
+      await verifySecondFactor(db, config, user.id, input, request.ip);
+      await elevateSession(db, config, session.id);
       return { ok: true };
     });
 
@@ -103,15 +153,17 @@ export const authModule: AppModule = {
       if (request.sessionId) {
         await db.delete(sessions).where(eq(sessions.id, request.sessionId));
         await db.insert(authEvents).values({
-          userId: request.authUser?.id ?? null,
-          email: request.authUser?.email ?? null,
+          userId: (request.authUser ?? request.partialUser)?.id ?? null,
+          email: (request.authUser ?? request.partialUser)?.email ?? null,
           event: "LOGOUT",
           ip: request.ip,
           userAgent: request.headers["user-agent"]?.slice(0, 300) ?? null,
         });
       }
       clearSessionCookie(reply);
-      return { ok: true };
+      // Közös belépésnél a kijelentkezés a portálon folytatódik: onnan minden modul kilépési jelzést kap.
+      const portalKilepes = request.session?.sso && config.sso ? `${config.sso.portalUrl}/kilepes` : null;
+      return { ok: true, portalKilepes };
     });
 
     app.get("/api/auth/me", async (request): Promise<MeResponse> => {
@@ -122,7 +174,7 @@ export const authModule: AppModule = {
         .innerJoin(companies, eq(companies.id, companyMemberships.companyId))
         .where(eq(companyMemberships.userId, user.id))
         .orderBy(companies.shortName);
-      return { user, companies: rows };
+      return { user, companies: rows, sso: request.session?.sso ?? false, portalUrl: config.sso?.portalUrl ?? null };
     });
 
     app.post("/api/auth/password", async (request) => {
