@@ -28,7 +28,10 @@ export interface ModulLeiras {
   elotag: string
   /** A modul neve az eseménycsatornán (@aweboldal/esemenyek MODULES). */
   esemenyNev: 'konyvelo' | 'eafa' | 'keszlet'
-  /** A modul főbb képernyői a menüben. */
+  /**
+   * A modul menüpontjai: a keret főmenüjében a modul egy pont (az első menüpontra visz), a pontjai a modulon
+   * belül, a második menüsorban jelennek meg (F23). Az előtaggal egyező pont a modul áttekintése.
+   */
   menu: readonly MenuPont[]
 }
 
@@ -38,10 +41,14 @@ export const MODUL_LEIRASOK: Record<ModulKod, ModulLeiras> = {
     nev: modul('konyvelo').nev,
     elotag: '/konyvelo',
     esemenyNev: 'konyvelo',
+    // A Könyvelő 6 menüpontja (a Könyvelő saját főmenüje; a Kezdőlapja a keretben „Áttekintés”).
     menu: [
-      { cim: 'Bizonylatok', utvonal: '/konyvelo/bizonylatok' },
+      { cim: 'Áttekintés', utvonal: '/konyvelo' },
+      { cim: 'Könyvelés', utvonal: '/konyvelo/konyveles' },
       { cim: 'Partnerek', utvonal: '/konyvelo/partnerek' },
       { cim: 'Kimutatások', utvonal: '/konyvelo/kimutatasok' },
+      { cim: 'Zárás', utvonal: '/konyvelo/zaras' },
+      { cim: 'Beállítások', utvonal: '/konyvelo/beallitasok' },
     ],
   },
   afa: {
