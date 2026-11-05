@@ -1071,3 +1071,18 @@ tr.clickable:hover td {
   margin: 6px 0 0;
   padding-left: 20px;
 }
+
+/* A Könyvelő a közös keretben (TERV.md F23): a fejléc a kereté, itt csak a Könyvelő eszközsora. */
+.konyvelo-keret__eszkozok {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.konyvelo-keret__eszkozok .header-spacer {
+  flex: 1;
+}
+.konyvelo-keret--keskeny {
+  max-width: 44rem;
+}

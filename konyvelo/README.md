@@ -410,6 +410,21 @@ mint eddig.**
   összekapcsolta a fiókját; addig a régi belépés marad, hogy senki ne zárja ki magát. Az állapot a Beállítások →
   Felhasználók oldal átállási listáján látszik.
 
+## A Könyvelő a közös keretben (AWEBOLDAL TERV.md F23)
+
+A Könyvelő önállóan (mint eddig) és a portál közös keretében is fut. Az `npm run build` mindkettőt elkészíti:
+az önálló felületet (`apps/web/dist`) és a keretnek szóló csomagot (`apps/web/dist/modul/modul.js` +
+`modul.css`), amelyet a szerver a `/modul/` alatt szolgál ki. A keretben:
+
+- a Könyvelő a háttérben lép be a portál jegyével (közös belépés: `SSO_ENGEDELYEZVE=true`, `PORTAL_URL`);
+- a cég a portál cégéhez rendelt Könyvelő-cég, az üzleti év a keret választott időszakából jön;
+- a fejléc, a téma, a gyorsbillentyűk (Alt+N/F2/N; Alt+L vagy L) és az értesítések a kereté;
+- a stílus a Könyvelő dobozára szűkül (`apps/web/keret-css.ts`).
+
+A közös komponensek (`kozos/`) az AWEBOLDAL csomagjainak változatlan másolatai; a `@konyvelo/kozos-masolat`
+teszt jelzi, ha valamelyik eltér az eredetitől. Frissítés: az AWEBOLDAL-ban
+`npx tsx scripts/kozos-masolas.ts ../k-nyvel-app/konyvelo/kozos`.
+
 ## Éles futtatás (egyszerű)
 
 ```bash
