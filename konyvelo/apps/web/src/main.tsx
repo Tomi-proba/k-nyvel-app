@@ -29,6 +29,8 @@ import { CompanySettingsPage, NewCompanyPage, PasswordPage, SettingsLayout } fro
 import { ApiError, get } from "./lib/api";
 import { Loading, PageHeader } from "./ui/Page";
 import { ToastProvider } from "./ui/Toasts";
+import "@aweboldal/dizajn/tokens.css";
+import "@aweboldal/felulet/felulet.css";
 import "./styles.css";
 
 const queryClient = new QueryClient({

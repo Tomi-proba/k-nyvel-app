@@ -1,70 +1,27 @@
-/* Könyvelő – témaváltozók. A kontrasztok WCAG 2.1 AA szerint (szöveg ≥ 4.5:1). */
+/* Könyvelő – a színek és alapértékek a közös dizájn-tokenekből (AWEBOLDAL packages/dizajn, TERV.md F23 KB5):
+   a téma (világos/sötét/rendszer) mindenhol ugyanaz, önállóan és a közös keretben is. A tokenek kontrasztja
+   WCAG 2.1 AA szerinti. */
 :root {
-  --bg: #ffffff;
-  --surface: #f5f6f8;
-  --surface-2: #eceef2;
-  --text: #1a1d23;
-  --muted: #4f5662;
-  --border: #c9ced6;
-  --primary: #1d4ed8;
-  --primary-hover: #1e40af;
-  --on-primary: #ffffff;
-  --danger: #b91c1c;
-  --danger-bg: #fdecec;
-  --success: #166534;
-  --success-bg: #e8f6ec;
-  --warning: #8a5a00;
-  --warning-bg: #fff6e0;
-  --focus: #1d4ed8;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 16px rgb(0 0 0 / 0.08);
-  --radius: 8px;
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bg: var(--szin-hatter);
+  --surface: var(--szin-felulet);
+  --surface-2: var(--szin-felulet-2);
+  --text: var(--szin-szoveg);
+  --muted: var(--szin-halvany);
+  --border: var(--szin-keret);
+  --primary: var(--szin-elsodleges);
+  --primary-hover: var(--szin-elsodleges-sotet);
+  --on-primary: var(--szin-elsodlegesen);
+  --danger: var(--szin-hiba);
+  --danger-bg: color-mix(in srgb, var(--szin-hiba) 12%, var(--szin-hatter));
+  --success: var(--szin-siker);
+  --success-bg: var(--szin-siker-halvany);
+  --warning: var(--szin-figyelmeztetes);
+  --warning-bg: var(--szin-figyelmeztetes-halvany);
+  --focus: var(--szin-elsodleges);
+  --shadow: var(--arnyek);
+  --radius: var(--kerekites-kicsi);
+  --font: var(--betu);
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #111318;
-    --surface: #1a1d24;
-    --surface-2: #232733;
-    --text: #e8eaed;
-    --muted: #a9afb9;
-    --border: #3d4350;
-    --primary: #8ab4ff;
-    --primary-hover: #a9c7ff;
-    --on-primary: #0b1020;
-    --danger: #ff9b9b;
-    --danger-bg: #3a1c1c;
-    --success: #7fe09a;
-    --success-bg: #17301f;
-    --warning: #ffd27a;
-    --warning-bg: #3a2e12;
-    --focus: #8ab4ff;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.4);
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
-  --bg: #111318;
-  --surface: #1a1d24;
-  --surface-2: #232733;
-  --text: #e8eaed;
-  --muted: #a9afb9;
-  --border: #3d4350;
-  --primary: #8ab4ff;
-  --primary-hover: #a9c7ff;
-  --on-primary: #0b1020;
-  --danger: #ff9b9b;
-  --danger-bg: #3a1c1c;
-  --success: #7fe09a;
-  --success-bg: #17301f;
-  --warning: #ffd27a;
-  --warning-bg: #3a2e12;
-  --focus: #8ab4ff;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.4);
-  color-scheme: dark;
 }
 
 *,
