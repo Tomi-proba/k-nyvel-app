@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { keretben } from "../../keret/futas";
 import { Link } from "../../keret/router";
 import { addDays, DOCUMENT_TYPES, formatDateHu, formatHuf, todayIso } from "@konyvelo/domain";
 import { APPROVAL_TODO_KINDS, ROLE_LABELS, type SharedTodosDto } from "@konyvelo/shared";
@@ -262,7 +263,7 @@ export function HomePage() {
 
   return (
     <>
-      <PageHeader title="Kezdőlap" description={`${ws.company.name} · szerepköre: ${ROLE_LABELS[ws.company.role]}`} />
+      <PageHeader title={keretben() ? "Áttekintés" : "Kezdőlap"} description={`${ws.company.name} · szerepköre: ${ROLE_LABELS[ws.company.role]}`} />
 
       <div className="grid-2">
         <section className="card" aria-labelledby="teendok">
@@ -272,7 +273,8 @@ export function HomePage() {
           <TodoCard />
         </section>
 
-        {(ws.company.role === "ADMIN" || ws.company.role === "CHIEF_ACCOUNTANT") && <SharedTodosCard companyId={ws.company.id} />}
+        {/* A keretben a többi program teendőit a keret közös Teendők oldala adja (nem jelenik meg kétszer). */}
+        {!keretben() && (ws.company.role === "ADMIN" || ws.company.role === "CHIEF_ACCOUNTANT") && <SharedTodosCard companyId={ws.company.id} />}
 
         <section className="card" aria-labelledby="uzleti-ev">
           <h2 id="uzleti-ev">Üzleti év</h2>

@@ -171,7 +171,87 @@ export function KetlepcsosPage({ beallitas }: { beallitas: boolean }) {
   );
 }
 
-type SsoValasz = { kovetkezo: "kesz"; companyId: string | null } | { kovetkezo: "osszekapcsolas"; kapcsolas: string; email: string; cegOsszerendelve: boolean };
+export type SsoValasz =
+  | { kovetkezo: "kesz"; companyId: string | null }
+  | { kovetkezo: "osszekapcsolas"; kapcsolas: string; email: string; cegOsszerendelve: boolean; ujFiokLehet?: boolean };
+export type SsoOsszekapcsolas = Extract<SsoValasz, { kovetkezo: "osszekapcsolas" }>;
+
+/**
+ * Az egyszeri fiók-összekapcsolás űrlapja (a portálról nyitott oldalon és a keretben is): a régi fiók jelszava és
+ * kétlépcsős kódja; a portál-cég tulajdonosa régi fiók nélkül új fiókot is kérhet.
+ */
+export function OsszekapcsolasUrlap({ allapot, onKesz }: { allapot: SsoOsszekapcsolas; onKesz: (companyId: string | null) => Promise<unknown> | void }) {
+  const [hiba, setHiba] = useState<string | null>(null);
+  const [email, setEmail] = useState(allapot.email);
+  const [jelszo, setJelszo] = useState("");
+  const [kod, setKod] = useState("");
+  const [visszaallito, setVisszaallito] = useState(false);
+  const [folyamatban, setFolyamatban] = useState(false);
+  const kuld = (f: () => Promise<{ companyId: string | null }>) => {
+    setHiba(null);
+    setFolyamatban(true);
+    f()
+      .then((r) => onKesz(r.companyId))
+      .catch((err) => setHiba(uzenet(err)))
+      .finally(() => setFolyamatban(false));
+  };
+  return (
+    <>
+      <form
+        className="form"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          kuld(() =>
+            post<{ companyId: string | null }>("/api/auth/sso/osszekapcsolas", {
+              kapcsolas: allapot.kapcsolas,
+              email,
+              jelszo,
+              ...(kod ? (visszaallito ? { visszaallitoKod: kod } : { kod: kod.trim() }) : {}),
+            }),
+          );
+        }}
+      >
+        <ErrorSummary message={hiba} />
+        <Field label="E-mail-cím a Könyvelőben" required>
+          {(p) => <input {...p} type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />}
+        </Field>
+        <Field label="Jelszó a Könyvelőben" required>
+          {(p) => <input {...p} type="password" autoComplete="current-password" autoFocus value={jelszo} onChange={(e) => setJelszo(e.target.value)} />}
+        </Field>
+        <KodMezok kod={kod} setKod={setKod} visszaallito={visszaallito} setVisszaallito={setVisszaallito} />
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary" disabled={folyamatban}>
+            Összekapcsolás és belépés
+          </button>
+        </div>
+      </form>
+      {allapot.ujFiokLehet && (
+        <section className="card" style={{ marginTop: 24 }} data-uj-fiok>
+          <h2>Nincs még Könyvelő-fiókja?</h2>
+          <p className="muted">
+            A cég tulajdonosaként új Könyvelő-fiókot kérhet a portál-fiókja adataival ({allapot.email}). Utána a Könyvelő-céget a portál
+            cégadataival hozhatja létre.
+          </p>
+          <button
+            type="button"
+            className="btn"
+            disabled={folyamatban}
+            onClick={() => kuld(() => post<{ companyId: string | null }>("/api/auth/sso/uj-fiok", { kapcsolas: allapot.kapcsolas }))}
+          >
+            Új Könyvelő-fiók a portál adataival
+          </button>
+        </section>
+      )}
+      {!allapot.cegOsszerendelve && !allapot.ujFiokLehet && (
+        <p className="muted">
+          Nincs még Könyvelő-fiókja? Kérje meg a cég tulajdonosát vagy adminisztrátorát, hogy a portálról belépve rendelje össze a Könyvelő-céget
+          a portál cégével. Utána a fiókja magától létrejön.
+        </p>
+      )}
+    </>
+  );
+}
 
 /** Belépés a portálról: a jegy az URL `#jegy=` részében jön (nem kerül a szervernaplókba), és egyszer használható. */
 export function SsoPage() {
@@ -180,11 +260,6 @@ export function SsoPage() {
   const elkuldve = useRef(false);
   const [allapot, setAllapot] = useState<SsoValasz | null>(null);
   const [hiba, setHiba] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [jelszo, setJelszo] = useState("");
-  const [kod, setKod] = useState("");
-  const [visszaallito, setVisszaallito] = useState(false);
-  const [folyamatban, setFolyamatban] = useState(false);
 
   const belepett = async (companyId: string | null) => {
     if (companyId) writeSetting("companyId", companyId);
@@ -205,7 +280,6 @@ export function SsoPage() {
     post<SsoValasz>("/api/auth/sso", { jegy })
       .then(async (r) => {
         if (r.kovetkezo === "kesz") return belepett(r.companyId);
-        setEmail(r.email);
         setAllapot(r);
       })
       .catch((e) => setHiba(uzenet(e)));
@@ -218,44 +292,7 @@ export function SsoPage() {
         title="Fiók összekapcsolása"
         intro="Ezzel a portál-fiókkal még nem lépett be a Könyvelőbe. Ha már van Könyvelő-fiókja, lépjen be vele egyszer (jelszó és kétlépcsős kód): utána a portálról mindig közvetlenül nyílik meg."
       >
-        <form
-          className="form"
-          noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
-            setHiba(null);
-            setFolyamatban(true);
-            post<{ companyId: string | null }>("/api/auth/sso/osszekapcsolas", {
-              kapcsolas: allapot.kapcsolas,
-              email,
-              jelszo,
-              ...(kod ? (visszaallito ? { visszaallitoKod: kod } : { kod: kod.trim() }) : {}),
-            })
-              .then((r) => belepett(r.companyId))
-              .catch((err) => setHiba(uzenet(err)))
-              .finally(() => setFolyamatban(false));
-          }}
-        >
-          <ErrorSummary message={hiba} />
-          <Field label="E-mail-cím a Könyvelőben" required>
-            {(p) => <input {...p} type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />}
-          </Field>
-          <Field label="Jelszó a Könyvelőben" required>
-            {(p) => <input {...p} type="password" autoComplete="current-password" autoFocus value={jelszo} onChange={(e) => setJelszo(e.target.value)} />}
-          </Field>
-          <KodMezok kod={kod} setKod={setKod} visszaallito={visszaallito} setVisszaallito={setVisszaallito} />
-          <div className="form-actions">
-            <button type="submit" className="btn btn-primary" disabled={folyamatban}>
-              Összekapcsolás és belépés
-            </button>
-          </div>
-        </form>
-        {!allapot.cegOsszerendelve && (
-          <p className="muted">
-            Nincs még Könyvelő-fiókja? Kérje meg a cég adminisztrátorát, hogy a portálról belépve rendelje össze a Könyvelő-céget a portál cégével
-            (Beállítások → Cégadatok). Utána a fiókja magától létrejön.
-          </p>
-        )}
+        <OsszekapcsolasUrlap allapot={allapot} onKesz={belepett} />
       </Shell>
     );
   }

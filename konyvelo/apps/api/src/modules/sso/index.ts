@@ -4,6 +4,8 @@
  *  - POST /api/auth/sso                belépés a portál egyszer használható, kétlépcsős (aal2) jegyével
  *  - POST /api/auth/sso/osszekapcsolas a portál-fiók összekapcsolása a régi fiókkal: EGYSZERI régi belépés
  *                                      (jelszó + kétlépcsős kód); pusztán az e-mail-cím egyezése nem elég
+ *  - POST /api/auth/sso/uj-fiok        új Könyvelő-fiók a portál-fiókhoz, ha a régi nincs: csak a portál-cég
+ *                                      tulajdonosának (a keretben az első megnyitáskor, F23 KB3)
  *  - POST /api/auth/sso/ceg            a Könyvelő cégének összerendelése a portál cégével (cég-adminisztrátor)
  *  - POST /api/auth/sso/kilepes        a portál kilépési jelzése (szerverről szerverre, aláírt jeggyel)
  *  - GET  /api/auth/sso/atallas        átállási lista: ki kapcsolta már össze a fiókját, kinek van 2FA-ja
@@ -40,6 +42,7 @@ const kapcsolasSchema = z.object({
   visszaallitoKod: z.string().trim().optional(),
 });
 const cegSchema = z.object({ companyId: z.string().uuid() });
+const ujFiokSchema = z.object({ kapcsolas: z.string().min(20) });
 
 /** A portál cégszerepe (vagy a portálon megadott könyvelőbeli szerepkör) → a Könyvelő szerepköre. */
 export function szerepkor(portalRole: string, moduleRole: string | null): Role {
@@ -184,7 +187,9 @@ export const ssoModule: AppModule = {
         idleMinutes: j.tetlenseg_perc,
         expiresAt: new Date(Date.now() + PENDING_MINUTES * 60_000),
       });
-      return { kovetkezo: "osszekapcsolas", kapcsolas, email: j.email, cegOsszerendelve: Boolean(mapped) };
+      // A portál-cég tulajdonosa új fiókot is kérhet (nincs régi fiókja ezzel az e-mail-címmel): utána a
+      // Könyvelő-céget a portál cégadataival hozza létre, vagy a keretben rendeli össze.
+      return { kovetkezo: "osszekapcsolas", kapcsolas, email: j.email, cegOsszerendelve: Boolean(mapped), ujFiokLehet: !regi && j.ceg.szerep === "tulajdonos" };
     });
 
     app.post("/api/auth/sso/osszekapcsolas", async (request, reply) => {
@@ -233,6 +238,34 @@ export const ssoModule: AppModule = {
       });
       await munkamenet(reply, request, u.id, { sid: p.portalSid, sub: p.portalSub, companyId: p.portalCompanyId, idleMinutes: p.idleMinutes });
       await db.insert(authEvents).values({ userId: u.id, email: u.email, event: "SSO_LINKED", ip: request.ip });
+      return { kovetkezo: "kesz", companyId };
+    });
+
+    app.post("/api/auth/sso/uj-fiok", async (request, reply) => {
+      kellSso();
+      const { kapcsolas } = parseBody(ujFiokSchema, request.body);
+      const [p] = await db
+        .select()
+        .from(ssoPending)
+        .where(and(eq(ssoPending.tokenHash, sha256(kapcsolas)), gt(ssoPending.expiresAt, new Date())))
+        .limit(1);
+      if (!p) throw new AppError(401, "SSO_KAPCSOLAS_LEJART", "Az összekapcsolás ideje lejárt. Kérjük, nyissa meg újra a Könyvelőt a portálról.");
+      if (p.portalRole !== "tulajdonos") throw new AppError(403, "FORBIDDEN", "Új Könyvelő-fiókot a portálon csak a cég tulajdonosa kérhet.");
+      const [regi] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${p.email}`).limit(1);
+      if (regi) throw conflict("Ezzel az e-mail-címmel már van Könyvelő-fiók: kapcsolja össze a régi belépéssel.");
+      const [mar] = await db.select({ id: ssoLinks.userId }).from(ssoLinks).where(eq(ssoLinks.portalSub, p.portalSub)).limit(1);
+      if (mar) throw conflict("Ez a portál-fiók már össze van kapcsolva egy Könyvelő-fiókkal.");
+
+      const passwordHash = await hashPassword(randomBytes(32).toString("base64url")); // régi belépésre nem használható
+      const { userId, companyId } = await db.transaction(async (tx) => {
+        const [u] = await tx.insert(users).values({ email: p.email, name: p.name || p.email, passwordHash }).returning({ id: users.id });
+        await tx.insert(ssoLinks).values({ portalSub: p.portalSub, userId: u!.id, method: "UJ_FIOK" });
+        await tx.delete(ssoPending).where(eq(ssoPending.tokenHash, p.tokenHash));
+        await writeAudit(tx, { companyId: null, userId: u!.id, action: "user.create", entityType: "user", entityId: u!.id, after: { email: p.email, forras: "portál (közös belépés, tulajdonos)" }, ip: request.ip });
+        return { userId: u!.id, companyId: await tagsag(tx, u!.id, p.portalCompanyId, p.portalRole, p.moduleRole) };
+      });
+      await munkamenet(reply, request, userId, { sid: p.portalSid, sub: p.portalSub, companyId: p.portalCompanyId, idleMinutes: p.idleMinutes });
+      await db.insert(authEvents).values({ userId, email: p.email, event: "SSO_LINKED", ip: request.ip });
       return { kovetkezo: "kesz", companyId };
     });
 

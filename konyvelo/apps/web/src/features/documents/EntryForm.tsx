@@ -40,6 +40,10 @@ import { deadlineText, useInvalidateDocuments, useTemplates } from "./queries";
 import { SettlementSection } from "./SettlementSection";
 import { TemplateDialog } from "./TemplateDialog";
 import { useOpenItems } from "../subledger/SubledgerPages";
+import { useGyorsbillentyu } from "@aweboldal/felulet";
+import { feliratok } from "@aweboldal/modulok";
+import { keretben } from "../../keret/futas";
+import { SABLON_BILLENTYU } from "../../keret/gyorsbillentyuk";
 
 /**
  * Bizonylat rögzítése (PLAN 5.2): fejadatok, tételsorok tartozik/követel
@@ -101,8 +105,10 @@ export function EntryForm({ initial, draftId, reference }: { initial: EntryState
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
-  // Alt+L: sablon választása.
+  // Alt+L: sablon választása. A keretben a keret gyorsbillentyű-rendszerébe regisztrál (ott az L a tartalék).
+  useGyorsbillentyu(keretben() ? SABLON_BILLENTYU : undefined, () => setTemplateOpen(true));
   useEffect(() => {
+    if (keretben()) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyL") {
         if (document.querySelector("[role='dialog'], [role='alertdialog']")) return;
@@ -275,7 +281,7 @@ export function EntryForm({ initial, draftId, reference }: { initial: EntryState
         title={title}
         description="Bizonylat nélkül nem lehet könyvelni (Szt. 165. §). Könyvelés előtt előnézet készül."
         actions={
-          <Tooltip content="Kontírozási sablon – Alt+L">
+          <Tooltip content={`Kontírozási sablon – ${keretben() ? feliratok(SABLON_BILLENTYU) : "Alt+L"}`}>
             <button type="button" className="btn" aria-keyshortcuts="Alt+L" onClick={() => setTemplateOpen(true)}>
               Sablon <Kbd>Alt+L</Kbd>
             </button>

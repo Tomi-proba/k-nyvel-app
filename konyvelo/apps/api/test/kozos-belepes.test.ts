@@ -234,6 +234,38 @@ describe("közös belépés a portál jegyével", () => {
     expect((await new Client(sso.app).post("/api/auth/login", { email: "iroda@example.hu", password: PASSWORD })).statusCode).toBe(401);
   });
 
+  it("új portál-tulajdonos a keretben: új fiók régi belépés nélkül, cég a portál adataival, összerendelés", async () => {
+    const ujCeg = randomUUID();
+    // Nem tulajdonos: új fiókot nem kérhet.
+    const m = new Client(sso.app);
+    const rm = (await m.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-munkatars", email: "munkatars@example.hu", cegId: ujCeg, szerep: "munkatars" }) })).json();
+    expect(rm).toMatchObject({ kovetkezo: "osszekapcsolas", ujFiokLehet: false });
+    expect((await m.post("/api/auth/sso/uj-fiok", { kapcsolas: rm.kapcsolas })).statusCode).toBe(403);
+    // Akinek van régi fiókja, annak össze kell kapcsolnia (nem kaphat újat).
+    const ra = (await new Client(sso.app).post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-masik-admin", email: "admin@example.hu", cegId: ujCeg }) })).json();
+    expect(ra).toMatchObject({ kovetkezo: "osszekapcsolas", ujFiokLehet: false });
+    expect((await new Client(sso.app).post("/api/auth/sso/uj-fiok", { kapcsolas: ra.kapcsolas })).statusCode).toBe(409);
+
+    const t = new Client(sso.app);
+    const r = (await t.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-tulaj", sid: "sid-tulaj", email: "Tulaj@Example.hu", name: "Tulaj Tamás", cegId: ujCeg }) })).json();
+    expect(r).toMatchObject({ kovetkezo: "osszekapcsolas", ujFiokLehet: true, cegOsszerendelve: false });
+    expect((await t.post("/api/auth/sso/uj-fiok", { kapcsolas: "x".repeat(40) })).statusCode).toBe(401);
+    expect((await t.post("/api/auth/sso/uj-fiok", { kapcsolas: r.kapcsolas })).json()).toEqual({ kovetkezo: "kesz", companyId: null });
+    // A kapcsolás egyszer használható.
+    expect((await t.post("/api/auth/sso/uj-fiok", { kapcsolas: r.kapcsolas })).statusCode).toBe(401);
+    const me = (await t.get("/api/auth/me")).json();
+    expect(me).toMatchObject({ user: { email: "tulaj@example.hu", name: "Tulaj Tamás" }, companies: [], ssoPortalCompanyId: ujCeg });
+
+    const c = await createCompany(t, { name: "Tulaj Kft.", shortName: "Tulaj Kft." });
+    expect((await t.post("/api/auth/sso/ceg", { companyId: c.id })).statusCode).toBe(200);
+    const ujra = new Client(sso.app);
+    expect((await ujra.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-tulaj", sid: "sid-tulaj-2", email: "tulaj@example.hu", cegId: ujCeg }) })).json()).toEqual({
+      kovetkezo: "kesz",
+      companyId: c.id,
+    });
+    expect((await ujra.get("/api/auth/me")).json().companies).toEqual([expect.objectContaining({ id: c.id, portalCompanyId: ujCeg, role: "ADMIN" })]);
+  });
+
   it("a tétlenségi idő a jegyből jön (legfeljebb 12 óra)", async () => {
     const c = new Client(sso.app);
     await c.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-admin", sid: "sid-hosszu", email: "admin@example.hu", cegId: portalCeg, tetlenseg: 480 }) });

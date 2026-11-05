@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { Link } from "../../keret/router";
 import { addDays, formatHuf, todayIso } from "@konyvelo/domain";
@@ -30,8 +30,15 @@ export function MoneyPage() {
     [accounts.data],
   );
   const accountId = params.get("szamla") ?? money[0]?.id ?? "";
-  const [to, setTo] = useState(todayIso());
-  const [from, setFrom] = useState(addDays(todayIso(), -30));
+  // Önállóan az utolsó 30 nap; a keretben a keret választott időszaka (és annak váltásakor az új).
+  const kt = ws.keretIdoszak;
+  const [to, setTo] = useState(kt?.ig ?? todayIso());
+  const [from, setFrom] = useState(kt?.tol ?? addDays(todayIso(), -30));
+  useEffect(() => {
+    if (!kt) return;
+    setFrom(kt.tol);
+    setTo(kt.ig);
+  }, [kt?.tol, kt?.ig]); // eslint-disable-line react-hooks/exhaustive-deps
   const [statement, setStatement] = useState("");
   const companyId = ws.company?.id;
   const q = useQuery({

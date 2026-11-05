@@ -1,5 +1,8 @@
 import * as RadixTooltip from "@radix-ui/react-tooltip";
 import type { ReactNode } from "react";
+
+const KONYVELO_DOBOZ = '[data-modul-keretben="konyvelo"]';
+import { keretben } from "../keret/futas";
 import { GLOSSARY, type GlossaryKey } from "../help/glossary";
 
 /** Tooltip: egérrel rámutatva és billentyűzettel (fókusszal) is megjelenik. */
@@ -7,7 +10,8 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
   return (
     <RadixTooltip.Root delayDuration={300}>
       <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
-      <RadixTooltip.Portal>
+      {/* A keretben a Könyvelő dobozába (ott érvényes a stílusa), önállóan a dokumentum végére. */}
+      <RadixTooltip.Portal container={keretben() ? (document.querySelector<HTMLElement>(KONYVELO_DOBOZ) ?? undefined) : undefined}>
         <RadixTooltip.Content className="tooltip" sideOffset={6}>
           {content}
           <RadixTooltip.Arrow className="tooltip-arrow" />

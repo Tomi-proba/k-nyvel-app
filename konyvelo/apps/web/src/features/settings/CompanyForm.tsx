@@ -65,16 +65,19 @@ function toPayload(v: Values) {
 /** Cégadatok űrlapja – létrehozáshoz és szerkesztéshez is. */
 export function CompanyForm({
   company,
+  kezdo,
   readOnly,
   submitLabel,
   onSubmit,
 }: {
   company?: CompanyDto;
+  /** Új cégnél előtöltött mezők (pl. a keretben a portál cégadatai). */
+  kezdo?: Partial<Pick<Values, "name" | "shortName" | "taxNumber">>;
   readOnly?: boolean;
   submitLabel: string;
   onSubmit: (data: CompanyCreateInput) => Promise<unknown>;
 }) {
-  const form = useZodForm(companyCreateSchema, initialValues(company), toPayload);
+  const form = useZodForm(companyCreateSchema, { ...initialValues(company), ...kezdo }, toPayload);
   const text = (key: keyof Values, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) =>
     function Input(p: object) {
       return (
