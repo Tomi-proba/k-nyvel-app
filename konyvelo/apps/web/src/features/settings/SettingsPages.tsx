@@ -1,7 +1,8 @@
 import { PortalCegOsszerendeles } from "../auth/KozosBelepes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { Outlet } from "react-router";
+import { NavLink, useNavigate } from "../../keret/router";
 import type { CompanyDto } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";
 import { get, patch, post } from "../../lib/api";

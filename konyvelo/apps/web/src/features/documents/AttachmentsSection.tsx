@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import { Ablak as Dialog } from "@aweboldal/felulet";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { AttachmentDto } from "@konyvelo/shared";

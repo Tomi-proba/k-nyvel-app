@@ -17,6 +17,10 @@ export interface KeretCeg {
   /** A modul saját cégazonosítója, ha a portál cégéhez már hozzá van rendelve. */
   modulCegId: string | null
   csakOlvashato: boolean
+  /** A cég adószáma (pl. a modulbeli cég létrehozásához a portál adataival). */
+  adoszam: string
+  /** A felhasználó szerepe a portálon ennél a cégnél. */
+  szerep: 'tulajdonos' | 'konyvelo' | 'munkatars'
 }
 
 export interface KeretKontextus {
@@ -34,10 +38,15 @@ export interface KeretKontextus {
   /** A modul API-jának címe a keret címén (K1), pl. /api/konyvelo. */
   apiAlap: (modul: ModulKod) => string
   teendokFrissitese: () => void
+  /** Belépési jegy a modulnak a kiválasztott céghez (a keret saját belépésével; F21), új ablak nélkül. */
+  jegyKeres: (modul: ModulKod) => Promise<string>
 }
 
 const Kontextus = createContext<KeretKontextus | null>(null)
 export const KeretSzolgaltato = Kontextus.Provider
+
+/** A keret kontextusa, ha a modul a keretben fut; önálló futásnál null. */
+export const useKeretHaVan = (): KeretKontextus | null => useContext(Kontextus)
 
 export function useKeret(): KeretKontextus {
   const k = useContext(Kontextus)
@@ -57,6 +66,8 @@ export interface ModulCsomag {
   idoszakFajta: IdoszakFajta | null
   /** A modul gyorsbillentyűi (a keret ütközés-ellenőrzéssel veszi fel). */
   gyorsbillentyuk?: Gyorsbillentyu[]
+  /** A modul stíluslapjai a csomag mappájában (pl. ["modul.css"]); a keret a megjelenítés előtt betölti. */
+  stilusok?: string[]
 }
 
 // --- Értesítések -----------------------------------------------------------------------------------------

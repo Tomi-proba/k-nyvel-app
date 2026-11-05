@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { Link } from "../../keret/router";
 import { addDays, DOCUMENT_TYPES, formatDateHu, formatHuf, todayIso } from "@konyvelo/domain";
 import { APPROVAL_TODO_KINDS, ROLE_LABELS, type SharedTodosDto } from "@konyvelo/shared";
 import { get } from "../../lib/api";

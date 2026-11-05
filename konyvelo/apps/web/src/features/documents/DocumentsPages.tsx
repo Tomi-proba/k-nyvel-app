@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
+import { Link, useNavigate } from "../../keret/router";
 import { DOCUMENT_TYPES, formatHuf, isDocumentType, type DocumentType } from "@konyvelo/domain";
 import { ENTERABLE_DOCUMENT_TYPES, type DocumentListResponse } from "@konyvelo/shared";
 import { NEW_ENTRY_PATH } from "../../app/AppLayout";

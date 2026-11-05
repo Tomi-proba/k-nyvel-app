@@ -1,7 +1,7 @@
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link } from "../../keret/router";
 import { formatDateHu, formatHuf } from "@konyvelo/domain";
 import {
   APPROVAL_KIND_LABELS,

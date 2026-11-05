@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import { Ablak as Dialog } from "@aweboldal/felulet";
 import { useEffect, useRef } from "react";
 import { Kbd } from "../ui/Tooltip";
 

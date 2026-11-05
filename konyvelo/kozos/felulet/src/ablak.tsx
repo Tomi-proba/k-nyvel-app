@@ -20,6 +20,9 @@ import {
 } from 'react'
 
 interface AblakAllapot {
+  /** Van-e leírás (Description) az ablakban: csak akkor kötjük az aria-describedby-hoz. */
+  leirasVan: boolean
+  leirasJelzes: (van: boolean) => void
   nyitva: boolean
   nyit: (n: boolean) => void
   cimId: string
@@ -58,7 +61,8 @@ function Root({
     [open, onOpenChange],
   )
   const id = useId()
-  return <Ctx.Provider value={{ nyitva, nyit, cimId: `${id}-cim`, leirasId: `${id}-leiras`, figyelmeztetes }}>{children}</Ctx.Provider>
+  const [leirasVan, leirasJelzes] = useState(false)
+  return <Ctx.Provider value={{ nyitva, nyit, cimId: `${id}-cim`, leirasId: `${id}-leiras`, figyelmeztetes, leirasVan, leirasJelzes }}>{children}</Ctx.Provider>
 }
 
 type Gyerek = ReactElement<{ onClick?: (e: MouseEvent) => void; id?: string }>
@@ -100,9 +104,13 @@ const Overlay = (_: { className?: string }) => null
 function Content({ className, children, ...p }: DialogHTMLAttributes<HTMLDialogElement>) {
   const a = useAblak()
   const ref = useRef<HTMLDialogElement>(null)
+  // Előbb az üres ablak nyílik meg modálisan, és csak utána kerül bele a tartalom: így a tartalomban kért
+  // kezdő fókusz (autoFocus) a már megnyitott ablakban érvényesül.
+  const [megnyitva, setMegnyitva] = useState(false)
   useEffect(() => {
     const d = ref.current
     if (a.nyitva && d && !d.open) d.showModal()
+    setMegnyitva(a.nyitva)
   }, [a.nyitva])
   if (!a.nyitva) return null
   return (
@@ -113,7 +121,7 @@ function Content({ className, children, ...p }: DialogHTMLAttributes<HTMLDialogE
       role={a.figyelmeztetes ? 'alertdialog' : undefined}
       aria-modal="true"
       aria-labelledby={a.cimId}
-      aria-describedby={p['aria-describedby'] ?? a.leirasId}
+      aria-describedby={'aria-describedby' in p ? p['aria-describedby'] : a.leirasVan ? a.leirasId : undefined}
       onCancel={(e) => {
         e.preventDefault()
         a.nyit(false)
@@ -124,7 +132,7 @@ function Content({ className, children, ...p }: DialogHTMLAttributes<HTMLDialogE
         if (!a.figyelmeztetes && e.target === ref.current) a.nyit(false)
       }}
     >
-      {children}
+      {megnyitva ? children : null}
     </dialog>
   )
 }
@@ -132,6 +140,12 @@ function Content({ className, children, ...p }: DialogHTMLAttributes<HTMLDialogE
 function cimkezett(nev: 'cimId' | 'leirasId', alap: 'h2' | 'p') {
   return function Resz({ asChild, children, ...p }: HTMLAttributes<HTMLElement> & { asChild?: boolean }) {
     const a = useAblak()
+    const jelez = a.leirasJelzes
+    useEffect(() => {
+      if (nev !== 'leirasId') return
+      jelez(true)
+      return () => jelez(false)
+    }, [jelez])
     if (asChild && isValidElement(children)) return cloneElement(children as Gyerek, { id: a[nev] })
     const El = alap
     return (

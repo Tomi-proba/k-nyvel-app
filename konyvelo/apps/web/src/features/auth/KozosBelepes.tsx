@@ -1,7 +1,7 @@
 // Kétlépcsős azonosítás (kötelező) és közös belépés a portálon át (AWEBOLDAL TERV.md F21).
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate } from "../../keret/router";
 import { ApiError, get, post } from "../../lib/api";
 import { writeSetting } from "../../lib/storage";
 import { ErrorSummary, Field } from "../../ui/Field";

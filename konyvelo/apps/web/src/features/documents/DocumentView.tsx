@@ -1,7 +1,7 @@
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate } from "../../keret/router";
 import { DOCUMENT_TYPES, formatHuf } from "@konyvelo/domain";
 import { FX_RATE_SOURCE_LABELS, type CompanyDto, type DocumentDto, type DocumentRef } from "@konyvelo/shared";
 import { NEW_ENTRY_PATH } from "../../app/AppLayout";

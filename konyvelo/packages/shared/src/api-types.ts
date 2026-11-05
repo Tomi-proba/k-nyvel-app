@@ -13,10 +13,12 @@ export const CSRF_HEADER = "x-konyvelo-csrf";
 
 export type MeResponse = {
   user: { id: string; email: string; name: string; mustChangePassword: boolean };
-  companies: Array<{ id: string; name: string; shortName: string; role: Role }>;
+  companies: Array<{ id: string; name: string; shortName: string; role: Role; portalCompanyId?: string | null }>;
   /** Közös belépéssel (a portálról) lépett be. */
   sso: boolean;
   portalUrl: string | null;
+  /** A közös keretben: a munkamenet melyik portál-céghez szól. */
+  ssoPortalCompanyId?: string | null;
 };
 
 export type CompanyDto = {

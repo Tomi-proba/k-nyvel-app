@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
+import { Link } from "../../keret/router";
 import { formatHuf, NAV_DIRECTION_LABELS, NAV_OPERATION_LABELS, todayIso, addDays, type NavDirection } from "@konyvelo/domain";
 import {
   NAV_INVOICE_STATE_LABELS,

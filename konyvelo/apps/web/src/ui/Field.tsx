@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { HibaOsszegzes, Mezo } from "@aweboldal/felulet";
 import type { GlossaryKey } from "../help/glossary";
 import { HelpTip } from "./Tooltip";
 
@@ -29,63 +30,17 @@ export function Field({
   required?: boolean;
   children: (props: FieldControlProps) => ReactNode;
 }) {
-  const id = useId();
-  const hintId = hint ? `${id}-hint` : undefined;
-  const errorId = error ? `${id}-error` : undefined;
-  const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
+  // A közös komponenskészlet mezője (TERV.md F23 KB4); a súgógomb a címke mellé, nem a mező nevébe.
   return (
-    <div className="field">
-      <div className="field-label-row">
-        <label htmlFor={id}>
-          {label}
-          {required && (
-            <span className="required-mark" aria-hidden="true">
-              {" "}*
-            </span>
-          )}
-        </label>
-        {/* A súgógomb a címkén kívül van, hogy ne kerüljön bele a mező nevébe. */}
-        {help && <HelpTip term={help} />}
-      </div>
-      {children({ id, "aria-invalid": Boolean(error), "aria-describedby": describedBy, "aria-required": required || undefined })}
-      {hint && (
-        <div className="hint" id={hintId}>
-          {hint}
-        </div>
-      )}
-      {error && (
-        <div className="error" id={errorId}>
-          {error}
-        </div>
-      )}
-    </div>
+    <Mezo cimke={label} hiba={error} sugo={hint} kotelezo={required} kiegeszites={help ? <HelpTip term={help} /> : undefined}>
+      {(a) => children(a)}
+    </Mezo>
   );
 }
 
 /**
- * Űrlap tetején megjelenő hibaösszesítő (fókuszt kap, a képernyőolvasó felolvassa).
- * Csak megjelenéskor, új üzenetnél vagy új mentési kísérletnél (`attempt`) kap fókuszt;
- * a mezőnkénti hibák változása (javítás, gépelés) közben a kurzor a mezőben marad.
+ * Űrlap tetején megjelenő hibaösszesítő (fókuszt kap, a képernyőolvasó felolvassa): a közös komponenskészleté.
  */
 export function ErrorSummary({ message, fields, attempt }: { message?: string | null; fields?: Record<string, string>; attempt?: number }) {
-  const items = fields ? Object.values(fields) : [];
-  const ref = useRef<HTMLDivElement>(null);
-  const visible = Boolean(message) || items.length > 0;
-  useEffect(() => {
-    if (visible) ref.current?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [message, attempt]);
-  if (!message && items.length === 0) return null;
-  return (
-    <div className="alert alert-error" role="alert" tabIndex={-1} ref={ref}>
-      <strong>{message ?? "Kérjük, javítsa a megjelölt mezőket."}</strong>
-      {items.length > 1 && (
-        <ul>
-          {items.map((m) => (
-            <li key={m}>{m}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  return <HibaOsszegzes uzenet={message} mezok={fields} kiserlet={attempt} />;
 }

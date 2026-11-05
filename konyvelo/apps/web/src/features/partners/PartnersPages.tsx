@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
+import { Link, useNavigate } from "../../keret/router";
 import { PARTNER_KIND_LABELS, PARTNER_STATUS_LABELS, type PartnerDto } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";
 import { del, get, patch, post } from "../../lib/api";

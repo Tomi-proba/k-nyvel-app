@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiCim } from "../../keret/futas";
 import { useState } from "react";
 import { EXPORT_FILE_STATUS_LABELS, verifyExport, type CompanyExportDto, type ExportVerification } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";
@@ -29,7 +30,7 @@ export function BackupExportPage() {
   async function download() {
     setBusy(true);
     try {
-      const res = await fetch(`/api/companies/${companyId}/export`, { credentials: "same-origin" });
+      const res = await fetch(apiCim(`/api/companies/${companyId}/export`), { credentials: "same-origin" });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
         throw new Error(body?.error?.message ?? "Az export nem készült el. Próbálja újra.");

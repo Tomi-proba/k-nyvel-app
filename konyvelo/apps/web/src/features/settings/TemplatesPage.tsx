@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import { Ablak as Dialog } from "@aweboldal/felulet";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { AMOUNT_BASE_LABELS, DOCUMENT_TYPES, type AmountBase, type LineSide } from "@konyvelo/domain";

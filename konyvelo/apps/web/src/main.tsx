@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-quer
 import * as RadixTooltip from "@radix-ui/react-tooltip";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { Link, Navigate } from "./keret/router";
 import type { MeResponse } from "@konyvelo/shared";
 import { AppLayout, NEW_ENTRY_PATH } from "./app/AppLayout";
 import { WorkspaceProvider } from "./app/workspace";

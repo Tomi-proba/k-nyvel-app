@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { Outlet } from "react-router";
+import { NavLink, useNavigate } from "../keret/router";
 import { ROLE_LABELS } from "@konyvelo/shared";
 import { post } from "../lib/api";
 import { fiscalYearLabel } from "../lib/format";

@@ -1,7 +1,8 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import { Ablak as Dialog } from "@aweboldal/felulet";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, NavLink, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { Link, NavLink } from "../../keret/router";
 import { agingBucket, AGING_BUCKETS, AGING_LABELS, formatHuf, OPEN_ITEM_KIND_LABELS, SUBLEDGER_LABELS, todayIso } from "@konyvelo/domain";
 import type { OpenItemDto, OpenItemsResponse, ReconciliationResponse, UnappliedDto } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";

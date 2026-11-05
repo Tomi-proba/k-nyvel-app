@@ -169,12 +169,19 @@ export const authModule: AppModule = {
     app.get("/api/auth/me", async (request): Promise<MeResponse> => {
       const user = requireUser(request);
       const rows = await db
-        .select({ id: companies.id, name: companies.name, shortName: companies.shortName, role: companyMemberships.role })
+        .select({ id: companies.id, name: companies.name, shortName: companies.shortName, role: companyMemberships.role, portalCompanyId: companies.portalCompanyId })
         .from(companyMemberships)
         .innerJoin(companies, eq(companies.id, companyMemberships.companyId))
         .where(eq(companyMemberships.userId, user.id))
         .orderBy(companies.shortName);
-      return { user, companies: rows, sso: request.session?.sso ?? false, portalUrl: config.sso?.portalUrl ?? null };
+      return {
+        user,
+        companies: rows,
+        sso: request.session?.sso ?? false,
+        portalUrl: config.sso?.portalUrl ?? null,
+        // A közös keretben: a munkamenet melyik portál-céghez szól (F23 KB3).
+        ssoPortalCompanyId: request.session?.portalCompanyId ?? null,
+      };
     });
 
     app.post("/api/auth/password", async (request) => {

@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import { Ablak as Dialog } from "@aweboldal/felulet";
 import { DOCUMENT_TYPES, formatDateHu, formatHuf, type Balance, type DeadlineStatus, type DocumentType } from "@konyvelo/domain";
 import type { AccountDto } from "@konyvelo/shared";
 import type { PreparedLine } from "./entry-model";

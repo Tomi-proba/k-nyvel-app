@@ -1,3 +1,4 @@
+import { apiCim } from "../keret/futas";
 import { CSRF_HEADER, type ApiError as ApiErrorBody } from "@konyvelo/shared";
 
 /** A szervertől kapott hiba, mezőnkénti üzenetekkel. */
@@ -24,7 +25,7 @@ export async function api<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 
 async function send(path: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(path, { credentials: "same-origin", ...init });
+    return await fetch(apiCim(path), { credentials: "same-origin", ...init });
   } catch {
     throw new ApiError(0, "NETWORK", "Nem sikerült kapcsolódni a szerverhez. Ellenőrizze az internetkapcsolatot.");
   }

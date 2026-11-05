@@ -1,7 +1,7 @@
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate } from "../../keret/router";
 import { addDays, formatHuf, normalizeForSearch, parseBalancePaste, parseOpenItemsPaste, todayIso } from "@konyvelo/domain";
 import type { ClosingStatusDto } from "@konyvelo/shared";
 import { fiscalYearsKey, useWorkspace } from "../../app/workspace";

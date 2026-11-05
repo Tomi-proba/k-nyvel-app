@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, useState, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { Link } from "../../keret/router";
 import { formatHuf, toThousandHuf, todayIso } from "@konyvelo/domain";
 import {
   INTERNAL_STATEMENT_FOOTER,

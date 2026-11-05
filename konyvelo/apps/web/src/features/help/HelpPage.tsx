@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { Link, useLocation } from "react-router";
+import { useLocation } from "react-router";
+import { Link } from "../../keret/router";
 import { GUIDE } from "../../help/guide";
 import { PageHeader } from "../../ui/Page";
 

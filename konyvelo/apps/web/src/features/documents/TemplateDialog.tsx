@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import { Ablak as Dialog } from "@aweboldal/felulet";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AMOUNT_BASE_LABELS, DOCUMENT_TYPES, normalizeForSearch } from "@konyvelo/domain";
 import type { AccountDto } from "@konyvelo/shared";

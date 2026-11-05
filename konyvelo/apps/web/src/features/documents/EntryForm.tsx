@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate } from "../../keret/router";
 import { DOCUMENT_TYPES, formatDateHu, formatHuf, missingAmountFor, documentBalance, balanceErrorMessage, type DocumentType } from "@konyvelo/domain";
 import { ENTERABLE_DOCUMENT_TYPES, FX_RATE_SOURCE_LABELS, FX_RATE_SOURCES, type DocumentDto } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";

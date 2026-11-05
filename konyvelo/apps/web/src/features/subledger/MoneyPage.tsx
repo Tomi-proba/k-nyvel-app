@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { Link } from "../../keret/router";
 import { addDays, formatHuf, todayIso } from "@konyvelo/domain";
 import type { MoneyRegisterDto } from "@konyvelo/shared";
 import { useWorkspace } from "../../app/workspace";
