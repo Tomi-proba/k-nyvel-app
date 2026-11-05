@@ -1,0 +1,10 @@
+{
+  "name": "@konyvelo/kozos-masolat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ellenőrzi, hogy a keret közös csomagjainak másolata (kozos/) változatlan-e az AWEBOLDAL eredetijéhez képest.",
+  "scripts": {
+    "test": "vitest run"
+  }
+}

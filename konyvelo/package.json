@@ -4,7 +4,8 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "kozos/*"
   ],
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,green \"npm run dev -w @konyvelo/api\" \"npm run dev -w @konyvelo/web\"",
@@ -13,7 +14,7 @@
     "db:setup": "tsx scripts/db-setup.ts",
     "db:migrate": "npm run migrate -w @konyvelo/api",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test -w @konyvelo/domain && npm run test -w @konyvelo/shared && npm run test -w @konyvelo/esemenyek && npm run test -w @konyvelo/api",
+    "test": "npm run test -w @konyvelo/domain && npm run test -w @konyvelo/shared && npm run test -w @konyvelo/esemenyek && npm run test -w @konyvelo/api && npm run test -w @konyvelo/kozos-masolat",
     "test:e2e": "npm run build && playwright test",
     "backup": "tsx scripts/backup.ts",
     "restore": "tsx scripts/restore.ts",

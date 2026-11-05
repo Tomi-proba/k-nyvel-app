@@ -1,0 +1,22 @@
+{
+  "forras": "Tomi-proba/AWEBOLDAL packages/{felulet,modulok,arak,dizajn}",
+  "commit": "fdbc714678cd58fe467979d39d89bdc87655405c",
+  "masolva": "2026-11-05T11:13:21.877Z",
+  "fajlok": {
+    "felulet/package.json": "e2b7b1f473ff2ae0f73cbb1f2b29b0e15b1a94825833163ae1b91b40b0ad7349",
+    "felulet/src/ablak.tsx": "61fc781f908638d0c509954fcd2972976214a5a4c10e1323f49a6e9c12b3f645",
+    "felulet/src/ertekek.ts": "41dd60e7754e8272fed48451cf5b7d27dcd9c70ba11de29854c71ab2667078a0",
+    "felulet/src/felulet.css": "508b1a7f84c445af530028029d4a475b3a48697100d8ca44c52e387dddbe2a38",
+    "felulet/src/index.ts": "2067ae83cdd78a231fa5b3b766336d9cc9056c94650cfe7bea0908db545e8c18",
+    "felulet/src/keret.tsx": "755949731ef87e7aac5f809a757871976a2fbe3fd059bf31407bde3b64866594",
+    "felulet/src/komponensek.tsx": "80fc738435a4a2e4d0cc686cc854150d61c4525bef554a3b83dc65607a3f4d9a",
+    "modulok/package.json": "5feb2714aa6461c2ac680e42028be1f3d12ccd9dca1a09712401ea6d910be371",
+    "modulok/src/gyorsbillentyuk.ts": "453d7d45d66623210839f70d8c4767f1f9165c8d48f5343f54d38f2c61cd52c3",
+    "modulok/src/idoszak.ts": "1dc2e838056dad07c1d82bf82d34cb42e3dd51861d16a334f54870539c81e7f7",
+    "modulok/src/index.ts": "82c1e8f5c8d7eb3e9df28bb98868b6465a882d47e389fa78b7e9df7a90420b87",
+    "arak/package.json": "df4cebe46c9797b84ddb11edcb7b1d8bc08ae7644f3a13b7cff39dc1a4485f06",
+    "arak/src/index.ts": "e12b370872be66b22c05616d0b17efe2c5a874820f0ff1660a9c4da83cbf7cd2",
+    "dizajn/package.json": "c199427d4d3affa11061e41a3726a107159585eb6b7ef3823a2e2748f7af1307",
+    "dizajn/tokens.css": "587eef64fe42616f6c89fb1d20597fdfe99b3d02f86932c2d538c40460832380"
+  }
+}

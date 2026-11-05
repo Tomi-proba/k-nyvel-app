@@ -19,7 +19,11 @@
     "exceljs": "^4.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router": "^7.9.4"
+    "react-router": "^7.9.4",
+    "@aweboldal/felulet": "*",
+    "@aweboldal/modulok": "*",
+    "@aweboldal/arak": "*",
+    "@aweboldal/dizajn": "*"
   },
   "devDependencies": {
     "@types/react": "^19.2.2",
