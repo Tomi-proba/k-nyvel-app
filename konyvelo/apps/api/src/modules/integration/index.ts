@@ -419,7 +419,10 @@ export const integrationModule: AppModule = {
       const records = await db.select().from(integrationRecords).where(eq(integrationRecords.documentId, documentId)).orderBy(asc(integrationRecords.createdAt));
       const stock = await db.select().from(documentStockLines).where(eq(documentStockLines.documentId, documentId)).orderBy(asc(documentStockLines.lineNo));
       // Programfüggetlen hivatkozás (F18): a program beállított címe + az útvonal; ugyanabban a fülben nyílik.
-      const link = (m: string, url: string | null) => (url && isModule(m) ? resolveModuleLink({ module: m, path: url.startsWith("/") || url.startsWith("#/") ? url : `/${url}` }, config.moduleUrls) : null);
+      const ut = (url: string | null) => (url ? (url.startsWith("/") || url.startsWith("#/") ? url : `/${url}`) : null);
+      const link = (m: string, url: string | null) => (url && isModule(m) ? resolveModuleLink({ module: m, path: ut(url)! }, config.moduleUrls) : null);
+      // A közös keret a program + útvonal párból a saját útvonalát képzi (ugyanazon a felületen, F26).
+      const path = (m: string, url: string | null) => (url && isModule(m) && !ut(url)!.startsWith("//") ? ut(url) : null);
       const origin = records.find((r) => r.kind === "PURCHASE" && r.needsDateChoice);
       const [openReversal] = doc.status === "POSTED" ? await db.select().from(integrationTodos).where(and(eq(integrationTodos.documentId, documentId), eq(integrationTodos.kind, "REVERSAL_APPROVAL"), isNull(integrationTodos.resolvedAt))) : [];
       const reversalRecord = openReversal ? records.filter((r) => r.kind === "REVERSAL").at(-1) : undefined;
@@ -427,7 +430,7 @@ export const integrationModule: AppModule = {
       if (hub && doc.status === "POSTED") {
         try {
           const links = await hub.links(companyId, "bizonylat", documentId);
-          targets = links.filter((l) => l.direction === "to").map((l) => ({ module: l.module, moduleLabel: MODULE_LABELS[l.module as Module] ?? l.module, label: l.label, url: link(l.module, l.url) }));
+          targets = links.filter((l) => l.direction === "to").map((l) => ({ module: l.module, moduleLabel: MODULE_LABELS[l.module as Module] ?? l.module, label: l.label, url: link(l.module, l.url), path: path(l.module, l.url) }));
         } catch {
           targets = null;
         }
@@ -435,7 +438,7 @@ export const integrationModule: AppModule = {
       return {
         sources: records
           .filter((r) => r.kind !== "REVERSAL")
-          .map((r) => ({ module: r.sourceModule, moduleLabel: MODULE_LABELS[r.sourceModule as Module] ?? r.sourceModule, kind: r.kind, label: r.sourceLabel, url: link(r.sourceModule, r.sourceUrl), at: r.createdAt.toISOString() })),
+          .map((r) => ({ module: r.sourceModule, moduleLabel: MODULE_LABELS[r.sourceModule as Module] ?? r.sourceModule, kind: r.kind, label: r.sourceLabel, url: link(r.sourceModule, r.sourceUrl), path: path(r.sourceModule, r.sourceUrl), at: r.createdAt.toISOString() })),
         dateChoice: origin && doc.status === "DRAFT" ? { receivedDate: origin.receivedDate, invoiceDate: origin.invoiceDate } : null,
         reversal: reversalRecord ? { date: reversalRecord.receivedDate!, reason: reversalRecord.sourceLabel } : null,
         targets,

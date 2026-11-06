@@ -2,6 +2,7 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "../../keret/router";
+import { ModulHivatkozas } from "../../keret/ModulHivatkozas";
 import { formatDateHu, formatHuf } from "@konyvelo/domain";
 import {
   APPROVAL_KIND_LABELS,
@@ -659,10 +660,10 @@ export function DocumentIntegrationPanel({ documentId, posted }: { documentId: s
       {d.sources.map((s, i) => (
         <p key={i}>
           Honnan jött: a(z) <strong>{s.moduleLabel}</strong> {s.label ? `„${s.label}”` : "tételéből"}{" "}
-          {s.url ? (
-            <a href={s.url} target="_blank" rel="noreferrer">
+          {s.url || s.path ? (
+            <ModulHivatkozas module={s.module} path={s.path} url={s.url}>
               (megnyitás a(z) {s.moduleLabel} programban)
-            </a>
+            </ModulHivatkozas>
           ) : null}
           <span className="muted small"> · {formatDateTimeHu(s.at)}</span>
         </p>
@@ -730,7 +731,14 @@ export function DocumentIntegrationPanel({ documentId, posted }: { documentId: s
         <ul className="plain-list">
           {d.targets.map((t, i) => (
             <li key={i}>
-              Mi lett belőle: <strong>{t.moduleLabel}</strong> – {t.url ? <a href={t.url} target="_blank" rel="noreferrer">{t.label ?? "megnyitás"}</a> : (t.label ?? "tétel")}
+              Mi lett belőle: <strong>{t.moduleLabel}</strong> –{" "}
+              {t.url || t.path ? (
+                <ModulHivatkozas module={t.module} path={t.path} url={t.url}>
+                  {t.label ?? "megnyitás"}
+                </ModulHivatkozas>
+              ) : (
+                (t.label ?? "tétel")
+              )}
             </li>
           ))}
         </ul>

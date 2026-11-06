@@ -109,13 +109,13 @@ export type SharedTodosDto = {
 export type DocumentIntegrationDto = {
   /** Ha az áfás bizonylat az eÁFA-ban már beküldött áfabevallás időszakába esik: figyelmeztetés (F17.2). */
   vatWarning?: string | null;
-  sources: Array<{ module: string; moduleLabel: string; kind: string; label: string | null; url: string | null; at: string }>;
+  sources: Array<{ module: string; moduleLabel: string; kind: string; label: string | null; url: string | null; path?: string | null; at: string }>;
   /** Beszerzésnél: a jóváhagyónak kell választania a könyvelés dátumát (❓2). */
   dateChoice: { receivedDate: string | null; invoiceDate: string | null } | null;
   /** Sztornó javasolt (a forrást visszavonták): a javasolt dátum és az ok. */
   reversal: { date: string; reason: string | null } | null;
   /** A központ szerint mi lett belőle a többi modulban (ha elérhető). */
-  targets: Array<{ module: string; moduleLabel: string; label: string | null; url: string | null }> | null;
+  targets: Array<{ module: string; moduleLabel: string; label: string | null; url: string | null; path?: string | null }> | null;
   stockLines: Array<{ productId: string; productName: string; quantity: number; unit: string | null; netAmount: number; vatRate: number | null; vatAmount: number }>;
   isCogs: boolean;
 };
