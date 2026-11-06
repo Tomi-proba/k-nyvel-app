@@ -45,6 +45,8 @@ export const belepesiJegySchema = z.object({
     szerep: z.enum(["tulajdonos", "konyvelo", "munkatars"]),
     /** A felhasználó modulbeli szerepköre, ha a portálon meg van adva (pl. Készletkezelő „raktaros”). */
     modulSzerep: z.string().nullable(),
+    /** Kiegészítő jogok a szerepkör mellé (F26: eÁFA „APPROVER” = második jóváhagyó). */
+    modulJogok: z.array(z.string()).default([]),
     /** Lemondott modul vagy lejárt próba: csak olvasható. */
     csakOlvashato: z.boolean(),
   }),
@@ -79,8 +81,27 @@ export const tagsagJelzesSchema = z.object({
   iat: z.number(),
   ceg: z.object({ id: z.string().uuid(), nev: z.string() }),
   modulSzerep: z.string().nullable(),
+  modulJogok: z.array(z.string()).default([]),
 });
 export type TagsagJelzes = z.infer<typeof tagsagJelzesSchema>;
+
+/**
+ * Tagsági kivonat (F26): a felhasználó összes portál-cégében a modulbeli hatályos szerepe, egyszerre. Akkor
+ * kéri a modul (szerverről, a felhasználó saját tokenjével), ha a portál nélkül, önállóan lépnek be: így a
+ * szerep belépéskor is a portálhoz igazodik, és amelyik cégből a felhasználót a portálon eltávolították, ott a
+ * portálról kapott tagság megszűnik.
+ */
+export const tagsagKivonatSchema = z.object({
+  iss: z.string(),
+  sub: z.string().min(1),
+  jti: z.string().min(8),
+  esemeny: z.literal("kivonat"),
+  email: z.string().email(),
+  exp: z.number(),
+  iat: z.number(),
+  cegek: z.array(z.object({ id: z.string().uuid(), modulSzerep: z.string().nullable(), modulJogok: z.array(z.string()).default([]) })),
+});
+export type TagsagKivonat = z.infer<typeof tagsagKivonatSchema>;
 
 export class JegyHiba extends Error {
   constructor(
@@ -146,6 +167,17 @@ export async function tagsagJelzesEllenorzes(
   const r = tagsagJelzesSchema.safeParse(payload);
   if (!r.success) throw new JegyHiba("ervenytelen", "Érvénytelen tagság-jelzés.");
   if (!(await opts.felhasznal(r.data.jti, new Date(r.data.exp * 1000)))) throw new JegyHiba("mar-felhasznalt", "Ezt a tagság-jelzést már felhasználták.");
+  return r.data;
+}
+
+export async function tagsagKivonatEllenorzes(
+  jegy: string,
+  opts: { kulcsok: JWTVerifyGetKey; kiado: string; modul: JegyModul; felhasznal: (jti: string, lejar: Date) => Promise<boolean> },
+): Promise<TagsagKivonat> {
+  const payload = await ellenoriz(jegy, opts.kulcsok, opts.kiado, tagsagCimzett(opts.modul), TAGSAG_JELZES_MP);
+  const r = tagsagKivonatSchema.safeParse(payload);
+  if (!r.success) throw new JegyHiba("ervenytelen", "Érvénytelen tagsági kivonat.");
+  if (!(await opts.felhasznal(r.data.jti, new Date(r.data.exp * 1000)))) throw new JegyHiba("mar-felhasznalt", "Ezt a kivonatot már felhasználták.");
   return r.data;
 }
 
