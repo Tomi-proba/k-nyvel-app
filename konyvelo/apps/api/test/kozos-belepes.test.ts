@@ -32,7 +32,19 @@ async function ssoConfig(): Promise<Partial<Config>> {
   return { sso: { kiado: KIADO, portalUrl: KIADO, jwksUrl: `${KIADO}/.well-known/jwks.json`, keys: createLocalJWKSet({ keys: [jwk] }) } };
 }
 
-type JegyAdat = { sub: string; sid?: string; email: string; name?: string; cegId: string; szerep?: string; modulSzerep?: string | null; tetlenseg?: number; aal?: string };
+type JegyAdat = {
+  sub: string;
+  sid?: string;
+  email: string;
+  name?: string;
+  cegId: string;
+  szerep?: string;
+  modulSzerep?: string | null;
+  tetlenseg?: number;
+  aal?: string;
+  /** A kezelő könyvelőiroda (F26a), ha az ügyfélcégre szól a jegy. */
+  iroda?: { id: string; nev: string } | null;
+};
 
 async function belepesiJegy(a: JegyAdat, modul: "konyvelo" | "afa" = "konyvelo"): Promise<string> {
   return new SignJWT({
@@ -41,7 +53,7 @@ async function belepesiJegy(a: JegyAdat, modul: "konyvelo" | "afa" = "konyvelo")
     name: a.name ?? "Portál Péter",
     aal: a.aal ?? "aal2",
     tetlenseg_perc: a.tetlenseg ?? 30,
-    ceg: { id: a.cegId, nev: "Minta Kft.", szerep: a.szerep ?? "tulajdonos", modulSzerep: a.modulSzerep ?? null, csakOlvashato: false },
+    ceg: { id: a.cegId, nev: "Minta Kft.", szerep: a.szerep ?? "tulajdonos", modulSzerep: a.modulSzerep ?? null, csakOlvashato: false, iroda: a.iroda ?? null },
   })
     .setProtectedHeader({ alg: "ES256", kid: "k1" })
     .setIssuer(KIADO)
@@ -386,5 +398,59 @@ describe("közös belépés a portál jegyével", () => {
       await ownerQuery("UPDATE users SET is_active = true WHERE email = 'tag@example.hu'");
       await ki.close();
     }
+  });
+});
+
+// F26a: könyvelőirodánál minden ügyfél külön portál-cég, és így külön Könyvelő-cég. A portál csak annak ad
+// jegyet és tagságot egy ügyfélhez, akit hozzá rendeltek (az irodavezető mindegyikhez); a Könyvelő a jegy és a
+// jelzés szerint igazodik. Itt azt igazoljuk, hogy a Könyvelő oldalán sem lát senki olyan ügyfelet, akihez nincs
+// tagsága: sem a nem hozzárendelt irodai munkatárs, sem az ügyfél saját embere az iroda többi ügyfelét.
+describe("F26a: könyvelőiroda – az ügyfelek elkülönítése a Könyvelőben", () => {
+  const iroda = { id: randomUUID(), nev: "Szám Iroda Kft." };
+  const ugyfel1 = randomUUID();
+  const ugyfel2 = randomUUID();
+  let c1: string;
+  let c2: string;
+
+  it("az irodavezető mindkét ügyfelet megnyitja; ügyfelenként külön Könyvelő-cég", async () => {
+    const v = new Client(sso.app);
+    const r = (await v.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-vezeto", sid: "sid-vezeto-1", email: "vezeto@iroda.hu", name: "Vezető Vera", cegId: ugyfel1, iroda }) })).json();
+    expect(r).toMatchObject({ kovetkezo: "osszekapcsolas", ujFiokLehet: true });
+    await v.post("/api/auth/sso/uj-fiok", { kapcsolas: r.kapcsolas });
+    c1 = (await createCompany(v, { name: "Első Ügyfél Kft.", shortName: "Első Ügyfél" })).id;
+    expect((await v.post("/api/auth/sso/ceg", { companyId: c1 })).statusCode).toBe(200);
+
+    const v2 = new Client(sso.app);
+    expect((await v2.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-vezeto", sid: "sid-vezeto-2", email: "vezeto@iroda.hu", cegId: ugyfel2, iroda }) })).json()).toEqual({
+      kovetkezo: "kesz",
+      companyId: null,
+    });
+    c2 = (await createCompany(v2, { name: "Második Ügyfél Bt.", shortName: "Második Ügyfél" })).id;
+    expect((await v2.post("/api/auth/sso/ceg", { companyId: c2 })).statusCode).toBe(200);
+    expect(((await v2.get("/api/auth/me")).json().companies as Array<{ id: string }>).map((c) => c.id).sort()).toEqual([c1, c2].sort());
+  });
+
+  it("a csak az első ügyfélhez rendelt munkatárs a másodikat nem látja; a hozzárendelés megszűnésével az elsőt sem", async () => {
+    const m = new Client(sso.app);
+    const jegy = await belepesiJegy({ sub: "p-mt", sid: "sid-munkatars", email: "munkatars@iroda.hu", name: "Munka Márton", cegId: ugyfel1, szerep: "konyvelo", iroda });
+    expect((await m.post("/api/auth/sso", { jegy })).json()).toEqual({ kovetkezo: "kesz", companyId: c1 });
+    expect((await m.get("/api/auth/me")).json().companies).toEqual([expect.objectContaining({ id: c1, role: "ACCOUNTANT" })]);
+    expect((await m.get(`/api/companies/${c1}/accounts`)).statusCode).toBe(200);
+    for (const ut of ["accounts", "documents", "members", "audit-log"]) expect([403, 404]).toContain((await m.get(`/api/companies/${c2}/${ut}`)).statusCode);
+
+    // A portálon kivették a hozzárendelésből: a jelzés után a tagság és a munkamenet is megszűnik.
+    const j = await tagsagJelzes("p-mt", "munkatars@iroda.hu", ugyfel1, null);
+    expect((await sso.app.inject({ method: "POST", url: "/api/auth/sso/tagsag", payload: { jelzes: j } })).statusCode).toBe(204);
+    expect((await m.get("/api/auth/me")).statusCode).toBe(401);
+    const { rows } = await ownerQuery("SELECT count(*)::int AS n FROM company_memberships m JOIN users u ON u.id = m.user_id WHERE u.email = 'munkatars@iroda.hu'");
+    expect(rows[0].n).toBe(0);
+  });
+
+  it("az ügyfél saját embere csak a saját cégét látja, az iroda többi ügyfelét nem", async () => {
+    const u = new Client(sso.app);
+    const jegy = await belepesiJegy({ sub: "p-ugyfel", sid: "sid-ugyfel", email: "penzugy@masodik.hu", name: "Pénz Ügyes", cegId: ugyfel2, szerep: "munkatars", modulSzerep: "VIEWER", iroda });
+    expect((await u.post("/api/auth/sso", { jegy })).json()).toEqual({ kovetkezo: "kesz", companyId: c2 });
+    expect((await u.get("/api/auth/me")).json().companies).toEqual([expect.objectContaining({ id: c2, role: "VIEWER" })]);
+    for (const ut of ["accounts", "documents", "members", "audit-log"]) expect([403, 404]).toContain((await u.get(`/api/companies/${c1}/${ut}`)).statusCode);
   });
 });
