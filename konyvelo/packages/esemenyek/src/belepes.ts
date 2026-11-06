@@ -49,6 +49,10 @@ export const belepesiJegySchema = z.object({
     modulJogok: z.array(z.string()).default([]),
     /** Lemondott modul vagy lejárt próba: csak olvasható. */
     csakOlvashato: z.boolean(),
+    /** A cég adószáma (F26a: az eÁFA az ügyfél-adózót ehhez rendeli; hozzáférést NEM ad, D13). */
+    adoszam: z.string().optional(),
+    /** Ha a cég egy könyvelőiroda ügyfele: a kezelő iroda (F26a). */
+    iroda: z.object({ id: z.string().uuid(), nev: z.string() }).nullable().default(null),
   }),
 });
 export type BelepesiJegy = z.infer<typeof belepesiJegySchema>;
@@ -79,7 +83,7 @@ export const tagsagJelzesSchema = z.object({
   name: z.string(),
   exp: z.number(),
   iat: z.number(),
-  ceg: z.object({ id: z.string().uuid(), nev: z.string() }),
+  ceg: z.object({ id: z.string().uuid(), nev: z.string(), iroda: z.object({ id: z.string().uuid(), nev: z.string() }).nullable().default(null) }),
   modulSzerep: z.string().nullable(),
   modulJogok: z.array(z.string()).default([]),
 });
