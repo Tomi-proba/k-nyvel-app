@@ -74,8 +74,8 @@ export async function buildApp(config: Config, db: Db, files: FileStore = create
   app.addHook("onRequest", async (request, reply) => {
     if (!request.url.startsWith("/api/")) return;
     // A központ felőli végpontokat aláírás védi (munkamenet és CSRF-fejléc nélkül), lásd modules/integration.
-    // A portál kilépési jelzése szerverről szerverre jön, aláírt jeggyel (lásd modules/sso).
-    if (request.url.startsWith("/api/integracio/") || request.url === "/api/auth/sso/kilepes") {
+    // A portál kilépési és tagság-jelzése szerverről szerverre jön, aláírt jeggyel (lásd modules/sso).
+    if (request.url.startsWith("/api/integracio/") || request.url === "/api/auth/sso/kilepes" || request.url === "/api/auth/sso/tagsag") {
       reply.header("Cache-Control", "no-store");
       return;
     }

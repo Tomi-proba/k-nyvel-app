@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type CryptoKey, type JWK } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { belepesiCimzett, kilepesiCimzett } from "@konyvelo/esemenyek";
+import { belepesiCimzett, kilepesiCimzett, tagsagCimzett } from "@konyvelo/esemenyek";
 import type { Config } from "../src/config";
 import { totpKod, totpLepes } from "../src/core/totp";
 import {
@@ -59,6 +59,18 @@ async function kilepesiJegy(sub: string, sid: string): Promise<string> {
     .setIssuer(KIADO)
     .setSubject(sub)
     .setAudience(kilepesiCimzett("konyvelo"))
+    .setJti(randomUUID())
+    .setIssuedAt()
+    .setExpirationTime("300s")
+    .sign(kulcs);
+}
+
+async function tagsagJelzes(sub: string, email: string, cegId: string, modulSzerep: string | null): Promise<string> {
+  return new SignJWT({ esemeny: "tagsag", email, name: "Portál Péter", ceg: { id: cegId, nev: "Minta Kft." }, modulSzerep })
+    .setProtectedHeader({ alg: "ES256", kid: "k1" })
+    .setIssuer(KIADO)
+    .setSubject(sub)
+    .setAudience(tagsagCimzett("konyvelo"))
     .setJti(randomUUID())
     .setIssuedAt()
     .setExpirationTime("300s")
@@ -229,9 +241,60 @@ describe("közös belépés a portál jegyével", () => {
     const r = await uj.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-konyvelo", sid: "sid-konyvelo", email: "iroda@example.hu", name: "Iroda Ilona", cegId: portalCeg, szerep: "konyvelo" }) });
     expect(r.json()).toMatchObject({ kovetkezo: "kesz", companyId });
     const me = (await uj.get("/api/auth/me")).json();
-    expect(me.companies).toEqual([expect.objectContaining({ id: companyId, role: "CHIEF_ACCOUNTANT" })]);
+    // A portál-könyvelő alapértelmezése „könyvelő” (F25): vezető könyvelővé a portálon lehet emelni.
+    expect(me.companies).toEqual([expect.objectContaining({ id: companyId, role: "ACCOUNTANT" })]);
     // A régi belépéshez nincs ismert jelszava.
     expect((await new Client(sso.app).post("/api/auth/login", { email: "iroda@example.hu", password: PASSWORD })).statusCode).toBe(401);
+  });
+
+  it("F25: a szerep minden belépéskor a portálhoz igazodik; szerep nélkül nincs belépés", async () => {
+    const c = new Client(sso.app);
+    const jegyes = async (modulSzerep: string | null, sid: string) =>
+      c.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-f25", sid, email: "f25@example.hu", name: "Füge Ferenc", cegId: portalCeg, szerep: "munkatars", modulSzerep }) });
+    expect((await jegyes("VIEWER", "sid-f25-1")).json()).toMatchObject({ kovetkezo: "kesz", companyId });
+    expect((await c.get("/api/auth/me")).json().companies).toEqual([expect.objectContaining({ id: companyId, role: "VIEWER" })]);
+    // A portálon vezető könyvelővé emelték: a következő belépéskor már az.
+    await jegyes("CHIEF_ACCOUNTANT", "sid-f25-2");
+    expect((await c.get("/api/auth/me")).json().companies).toEqual([expect.objectContaining({ id: companyId, role: "CHIEF_ACCOUNTANT" })]);
+    // A Könyvelő Tagok oldalán ez a tag a portálon kezelt: itt nem változtatható és nem távolítható el.
+    const admin = new Client(sso.app);
+    await admin.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-admin", sid: "sid-admin-f25", email: "admin@example.hu", cegId: portalCeg }) });
+    const tagok = (await admin.get(`/api/companies/${companyId}/members`)).json() as Array<{ email: string; userId: string; portalKezeli: boolean }>;
+    const f = tagok.find((t) => t.email === "f25@example.hu")!;
+    expect(f.portalKezeli).toBe(true);
+    expect((await admin.patch(`/api/companies/${companyId}/members/${f.userId}`, { role: "ADMIN" })).statusCode).toBe(409);
+    expect((await admin.delete(`/api/companies/${companyId}/members/${f.userId}`)).statusCode).toBe(409);
+    // Szerep nélküli jegy (régebbi portál, munkatárs): nincs belépés, a tagság megszűnik.
+    const r = await jegyes(null, "sid-f25-3");
+    expect(r.statusCode).toBe(403);
+    expect(r.json().error.code).toBe("NINCS_HOZZAFERES");
+    const { rows } = await ownerQuery("SELECT count(*)::int AS n FROM company_memberships m JOIN users u ON u.id = m.user_id WHERE u.email = 'f25@example.hu'");
+    expect(rows[0].n).toBe(0);
+  });
+
+  it("F25: a portál tagság-jelzése azonnal igazít, eltávolításkor a munkamenet is megszűnik; hamis vagy idegen jelzés nem jó", async () => {
+    const c = new Client(sso.app);
+    await c.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-jelzes", sid: "sid-jelzes", email: "jelzes@example.hu", name: "Jel Zsófi", cegId: portalCeg, szerep: "munkatars", modulSzerep: "ACCOUNTANT" }) });
+    expect((await c.get("/api/auth/me")).json().companies).toEqual([expect.objectContaining({ id: companyId, role: "ACCOUNTANT" })]);
+    const kuld = async (j: string) => sso.app.inject({ method: "POST", url: "/api/auth/sso/tagsag", payload: { jelzes: j } });
+    // Szerepváltás: azonnal érvényes, a munkamenet marad.
+    const j1 = await tagsagJelzes("p-jelzes", "jelzes@example.hu", portalCeg, "VIEWER");
+    expect((await kuld(j1)).statusCode).toBe(204);
+    expect((await c.get("/api/auth/me")).json().companies).toEqual([expect.objectContaining({ id: companyId, role: "VIEWER" })]);
+    // Ugyanaz a jelzés még egyszer: ártalmatlan.
+    expect((await kuld(j1)).statusCode).toBe(204);
+    // Ismeretlen portál-felhasználó (még nem lépett be): nincs teendő.
+    expect((await kuld(await tagsagJelzes("p-ismeretlen", "x@example.hu", portalCeg, "VIEWER"))).statusCode).toBe(204);
+    // Hamis jelzés és a belépési jegy jelzésként: elutasítva.
+    expect((await kuld("hamis.jelzes.ertek-xxxxxxxxxxxx")).statusCode).toBe(401);
+    expect((await kuld(await belepesiJegy({ sub: "p-jelzes", email: "jelzes@example.hu", cegId: portalCeg }))).statusCode).toBe(401);
+    // Eltávolítás: a tagság és a cégre szóló munkamenet megszűnik.
+    expect((await kuld(await tagsagJelzes("p-jelzes", "jelzes@example.hu", portalCeg, null))).statusCode).toBe(204);
+    expect((await c.get("/api/auth/me")).statusCode).toBe(401);
+    const { rows } = await ownerQuery(
+      "SELECT action, after FROM audit_log WHERE entity_type = 'membership' AND entity_id = (SELECT id::text FROM users WHERE email = 'jelzes@example.hu') ORDER BY id",
+    );
+    expect(rows.map((r) => r.action)).toEqual(["member.add", "member.update", "member.remove"]);
   });
 
   it("új portál-tulajdonos a keretben: új fiók régi belépés nélkül, cég a portál adataival, összerendelés", async () => {

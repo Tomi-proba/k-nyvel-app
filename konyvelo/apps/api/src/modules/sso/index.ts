@@ -8,6 +8,8 @@
  *                                      tulajdonosának (a keretben az első megnyitáskor, F23 KB3)
  *  - POST /api/auth/sso/ceg            a Könyvelő cégének összerendelése a portál cégével (cég-adminisztrátor)
  *  - POST /api/auth/sso/kilepes        a portál kilépési jelzése (szerverről szerverre, aláírt jeggyel)
+ *  - POST /api/auth/sso/tagsag         a portál tagság-jelzése (F25): a tag szerepe a portál szerint, vagy
+ *                                      eltávolításkor a tagság és a cégre szóló munkamenetek törlése
  *  - GET  /api/auth/sso/atallas        átállási lista: ki kapcsolta már össze a fiókját, kinek van 2FA-ja
  *
  * A régi belépés (REGI_BELEPES) csak akkor kapcsol ki ténylegesen, ha minden aktív felhasználó
@@ -17,7 +19,7 @@ import { randomBytes } from "node:crypto";
 import { and, count, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { createRemoteJWKSet, type JWTVerifyGetKey } from "jose";
 import { z } from "zod";
-import { JegyHiba, belepesiJegyEllenorzes, kilepesiJegyEllenorzes, type BelepesiJegy } from "@konyvelo/esemenyek";
+import { JegyHiba, belepesiJegyEllenorzes, kilepesiJegyEllenorzes, tagsagJelzesEllenorzes, type BelepesiJegy } from "@konyvelo/esemenyek";
 import { hasPermission, type Role } from "@konyvelo/shared";
 import type { Config } from "../../config";
 import { writeAudit } from "../../core/audit";
@@ -44,13 +46,20 @@ const kapcsolasSchema = z.object({
 const cegSchema = z.object({ companyId: z.string().uuid() });
 const ujFiokSchema = z.object({ kapcsolas: z.string().min(20) });
 
-/** A portál cégszerepe (vagy a portálon megadott könyvelőbeli szerepkör) → a Könyvelő szerepköre. */
-export function szerepkor(portalRole: string, moduleRole: string | null): Role {
+const SZEREPEK: readonly Role[] = ["ADMIN", "CHIEF_ACCOUNTANT", "ACCOUNTANT", "VIEWER"];
+
+/**
+ * A portál hatályos modulszerepe → a Könyvelő szerepköre (F25: a portál az egyetlen hely). Régebbi portál, amely
+ * nem küld modulszerepet: a tulajdonos adminisztrátor, a portál-könyvelő „könyvelő”; más nem kap hozzáférést.
+ * null: nincs hozzáférés.
+ */
+export function szerepkor(portalRole: string, moduleRole: string | null): Role | null {
   const m = moduleRole?.toUpperCase();
-  if (m === "ADMIN" || m === "CHIEF_ACCOUNTANT" || m === "ACCOUNTANT" || m === "VIEWER") return m;
+  if (m && (SZEREPEK as readonly string[]).includes(m)) return m as Role;
+  if (moduleRole) return null;
   if (portalRole === "tulajdonos") return "ADMIN";
-  if (portalRole === "konyvelo") return "CHIEF_ACCOUNTANT";
-  return "VIEWER";
+  if (portalRole === "konyvelo") return "ACCOUNTANT";
+  return null;
 }
 
 /** Ténylegesen él-e még a régi belépés (a kapcsoló és az átállás állapota együtt). */
@@ -95,29 +104,42 @@ export const ssoModule: AppModule = {
       userAgent: request.headers["user-agent"] as string | undefined,
     });
 
-    /** A portál cégéhez rendelt Könyvelő-cég; ha van, a felhasználó tagsága a portál szerepe szerint jön létre. */
-    async function tagsag(tx: Tx, userId: string, portalCompanyId: string, portalRole: string, moduleRole: string | null) {
+    /**
+     * A portál cégéhez rendelt Könyvelő-cégben a tag szerepe a portál szerint (F25): belépéskor és a portál
+     * tagság-jelzésére. Hozzáférés nélkül (null) a tagság és a cégre szóló munkamenetek megszűnnek.
+     * Visszaadja a Könyvelő-cég azonosítóját, ha van összerendelt cég.
+     */
+    async function tagsag(tx: Tx, userId: string, portalCompanyId: string, role: Role | null, ip: string | null) {
       const [c] = await tx.select({ id: companies.id }).from(companies).where(eq(companies.portalCompanyId, portalCompanyId)).limit(1);
       if (!c) return null;
       const [m] = await tx
-        .select({ role: companyMemberships.role })
+        .select({ role: companyMemberships.role, portalKezeli: companyMemberships.portalKezeli })
         .from(companyMemberships)
         .where(and(eq(companyMemberships.companyId, c.id), eq(companyMemberships.userId, userId)));
+      const forras = "portál (felhasználókezelés egy helyen)";
+      if (role === null) {
+        if (m) {
+          await tx.delete(companyMemberships).where(and(eq(companyMemberships.companyId, c.id), eq(companyMemberships.userId, userId)));
+          await writeAudit(tx, { companyId: c.id, userId, action: "member.remove", entityType: "membership", entityId: userId, before: { role: m.role }, after: { forras }, ip });
+        }
+        await tx.delete(sessions).where(and(eq(sessions.userId, userId), eq(sessions.portalCompanyId, portalCompanyId)));
+        return c.id;
+      }
       if (!m) {
-        const role = szerepkor(portalRole, moduleRole);
-        await tx.insert(companyMemberships).values({ companyId: c.id, userId, role, createdBy: null });
-        await writeAudit(tx, {
-          companyId: c.id,
-          userId,
-          action: "member.add",
-          entityType: "membership",
-          entityId: userId,
-          after: { role, forras: "portál (közös belépés)" },
-          ip: null,
-        });
+        await tx.insert(companyMemberships).values({ companyId: c.id, userId, role, createdBy: null, portalKezeli: true });
+        await writeAudit(tx, { companyId: c.id, userId, action: "member.add", entityType: "membership", entityId: userId, after: { role, forras }, ip });
+      } else if (m.role !== role || !m.portalKezeli) {
+        await tx
+          .update(companyMemberships)
+          .set({ role, portalKezeli: true })
+          .where(and(eq(companyMemberships.companyId, c.id), eq(companyMemberships.userId, userId)));
+        await writeAudit(tx, { companyId: c.id, userId, action: "member.update", entityType: "membership", entityId: userId, before: { role: m.role }, after: { role, forras }, ip });
       }
       return c.id;
     }
+
+    const nincsHozzaferes = () =>
+      new AppError(403, "NINCS_HOZZAFERES", "Ehhez a céghez a Könyvelőben nincs hozzáférésed. Szerepkört a cég tulajdonosa adhat a portálon.");
 
     async function munkamenet(reply: Parameters<typeof setSessionCookie>[0], request: Parameters<typeof meta>[0], userId: string, p: { sid: string; sub: string; companyId: string; idleMinutes: number }) {
       const token = await createSession(db, config, userId, meta(request), { aal: 2, portal: p });
@@ -141,7 +163,9 @@ export const ssoModule: AppModule = {
       if (link) {
         const [u] = await db.select({ isActive: users.isActive, email: users.email }).from(users).where(eq(users.id, link.userId)).limit(1);
         if (!u?.isActive) throw new AppError(403, "USER_INACTIVE", "A fiókja a Könyvelőben le van tiltva. Kérjük, szóljon a cég adminisztrátorának.");
-        const companyId = await db.transaction((tx) => tagsag(tx, link.userId, j.ceg.id, j.ceg.szerep, j.ceg.modulSzerep));
+        const role = szerepkor(j.ceg.szerep, j.ceg.modulSzerep);
+        const companyId = await db.transaction((tx) => tagsag(tx, link.userId, j.ceg.id, role, request.ip));
+        if (role === null) throw nincsHozzaferes();
         await munkamenet(reply, request, link.userId, portal);
         await db.insert(authEvents).values({ userId: link.userId, email: u.email, event: "SSO_LOGIN", ip: request.ip });
         return { kovetkezo: "kesz", companyId };
@@ -152,6 +176,7 @@ export const ssoModule: AppModule = {
       const [regi] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${j.email.toLowerCase()}`).limit(1);
       const [mapped] = await db.select({ id: companies.id }).from(companies).where(eq(companies.portalCompanyId, j.ceg.id)).limit(1);
       if (!regi && mapped) {
+        if (szerepkor(j.ceg.szerep, j.ceg.modulSzerep) === null) throw nincsHozzaferes();
         const passwordHash = await hashPassword(randomBytes(32).toString("base64url")); // régi belépésre nem használható
         const userId = await db.transaction(async (tx) => {
           const [u] = await tx.insert(users).values({ email: j.email.toLowerCase(), name: j.name || j.email, passwordHash }).returning({ id: users.id });
@@ -165,7 +190,7 @@ export const ssoModule: AppModule = {
             after: { email: j.email, forras: "portál (közös belépés)" },
             ip: request.ip,
           });
-          await tagsag(tx, u!.id, j.ceg.id, j.ceg.szerep, j.ceg.modulSzerep);
+          await tagsag(tx, u!.id, j.ceg.id, szerepkor(j.ceg.szerep, j.ceg.modulSzerep), request.ip);
           return u!.id;
         });
         await munkamenet(reply, request, userId, portal);
@@ -234,7 +259,7 @@ export const ssoModule: AppModule = {
         await tx.insert(ssoLinks).values({ portalSub: p.portalSub, userId: u.id, method: "REGI_BELEPES" });
         await tx.delete(ssoPending).where(eq(ssoPending.tokenHash, p.tokenHash));
         await writeAudit(tx, { companyId: null, userId: u.id, action: "user.sso_link", entityType: "user", entityId: u.id, after: { portal: p.email }, ip: request.ip });
-        return tagsag(tx, u.id, p.portalCompanyId, p.portalRole, p.moduleRole);
+        return tagsag(tx, u.id, p.portalCompanyId, szerepkor(p.portalRole, p.moduleRole), request.ip);
       });
       await munkamenet(reply, request, u.id, { sid: p.portalSid, sub: p.portalSub, companyId: p.portalCompanyId, idleMinutes: p.idleMinutes });
       await db.insert(authEvents).values({ userId: u.id, email: u.email, event: "SSO_LINKED", ip: request.ip });
@@ -262,7 +287,7 @@ export const ssoModule: AppModule = {
         await tx.insert(ssoLinks).values({ portalSub: p.portalSub, userId: u!.id, method: "UJ_FIOK" });
         await tx.delete(ssoPending).where(eq(ssoPending.tokenHash, p.tokenHash));
         await writeAudit(tx, { companyId: null, userId: u!.id, action: "user.create", entityType: "user", entityId: u!.id, after: { email: p.email, forras: "portál (közös belépés, tulajdonos)" }, ip: request.ip });
-        return { userId: u!.id, companyId: await tagsag(tx, u!.id, p.portalCompanyId, p.portalRole, p.moduleRole) };
+        return { userId: u!.id, companyId: await tagsag(tx, u!.id, p.portalCompanyId, szerepkor(p.portalRole, p.moduleRole), request.ip) };
       });
       await munkamenet(reply, request, userId, { sid: p.portalSid, sub: p.portalSub, companyId: p.portalCompanyId, idleMinutes: p.idleMinutes });
       await db.insert(authEvents).values({ userId, email: p.email, event: "SSO_LINKED", ip: request.ip });
@@ -302,6 +327,29 @@ export const ssoModule: AppModule = {
       }
       const torolt = await db.delete(sessions).where(eq(sessions.portalSid, k.sid)).returning({ userId: sessions.userId });
       if (torolt.length) await db.insert(authEvents).values({ userId: torolt[0]!.userId, event: "SSO_LOGOUT", ip: request.ip });
+      return reply.code(204).send();
+    });
+
+    /**
+     * A portál tagság-jelzése (F25): a portálon változott a felhasználó hozzáférése a cégben. Ha a felhasználó még
+     * nem lépett be a Könyvelőbe (nincs összekapcsolt fiókja) vagy a cég nincs összerendelve, nincs teendő: első
+     * belépéskor a jegyből igazodik. A jelzés a küldéskori állapotot viszi, ezért az ismételt kézbesítés ártalmatlan.
+     */
+    app.post("/api/auth/sso/tagsag", async (request, reply) => {
+      const sso = kellSso();
+      const { jelzes } = parseBody(z.object({ jelzes: z.string().min(20).max(8000) }), request.body);
+      let t;
+      try {
+        t = await tagsagJelzesEllenorzes(jelzes, { kulcsok: kulcsok(), kiado: sso.kiado, modul: "konyvelo", felhasznal });
+      } catch (e) {
+        if (e instanceof JegyHiba && e.kod === "mar-felhasznalt") return reply.code(204).send();
+        hiba(e);
+      }
+      const [link] = await db.select({ userId: ssoLinks.userId }).from(ssoLinks).where(eq(ssoLinks.portalSub, t.sub)).limit(1);
+      if (!link) return reply.code(204).send();
+      const role = szerepkor("munkatars", t.modulSzerep);
+      await db.transaction((tx) => tagsag(tx, link.userId, t.ceg.id, role, request.ip));
+      await db.insert(authEvents).values({ userId: link.userId, email: t.email, event: role ? "SSO_ROLE_SYNC" : "SSO_ACCESS_REVOKED", ip: request.ip });
       return reply.code(204).send();
     });
 

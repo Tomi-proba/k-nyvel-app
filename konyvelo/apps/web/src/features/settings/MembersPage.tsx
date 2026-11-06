@@ -140,42 +140,52 @@ export function MembersPage() {
                     </td>
                     <td>{m.email}</td>
                     <td>
-                      <label className="sr-only" htmlFor={`role-${m.userId}`}>
-                        {m.name} szerepköre
-                      </label>
-                      <select
-                        id={`role-${m.userId}`}
-                        className="input-compact"
-                        value={m.role}
-                        disabled={changeRole.isPending}
-                        onChange={(e) => changeRole.mutate({ userId: m.userId, role: e.target.value as Role })}
-                      >
-                        {ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {ROLE_LABELS[r]}
-                          </option>
-                        ))}
-                      </select>
+                      {m.portalKezeli ? (
+                        <span data-portal-kezeli>
+                          {ROLE_LABELS[m.role]} <span className="muted">(a portálon kezelik)</span>
+                        </span>
+                      ) : (
+                        <>
+                          <label className="sr-only" htmlFor={`role-${m.userId}`}>
+                            {m.name} szerepköre
+                          </label>
+                          <select
+                            id={`role-${m.userId}`}
+                            className="input-compact"
+                            value={m.role}
+                            disabled={changeRole.isPending}
+                            onChange={(e) => changeRole.mutate({ userId: m.userId, role: e.target.value as Role })}
+                          >
+                            {ROLES.map((r) => (
+                              <option key={r} value={r}>
+                                {ROLE_LABELS[r]}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      )}
                     </td>
                     <td>{formatDateHu(m.createdAt.slice(0, 10))}</td>
                     <td>
-                      <ConfirmDialog
-                        trigger={
-                          <button type="button" className="btn btn-small btn-danger" aria-label={`Eltávolítás: ${m.name}`}>
-                            Eltávolítás
-                          </button>
-                        }
-                        title="Felhasználó eltávolítása a cégből"
-                        description={
-                          <p>
-                            <strong>{m.name}</strong> ({m.email}) a továbbiakban nem fér hozzá a(z) {ws.company?.shortName} cég adataihoz. A
-                            felhasználó által korábban rögzített adatok és az audit napló bejegyzései megmaradnak.
-                            {isMe && " Figyelem: saját magát távolítja el."}
-                          </p>
-                        }
-                        confirmLabel="Eltávolítás"
-                        onConfirm={() => remove.mutateAsync(m.userId).catch(() => {})}
-                      />
+                      {!m.portalKezeli && (
+                        <ConfirmDialog
+                          trigger={
+                            <button type="button" className="btn btn-small btn-danger" aria-label={`Eltávolítás: ${m.name}`}>
+                              Eltávolítás
+                            </button>
+                          }
+                          title="Felhasználó eltávolítása a cégből"
+                          description={
+                            <p>
+                              <strong>{m.name}</strong> ({m.email}) a továbbiakban nem fér hozzá a(z) {ws.company?.shortName} cég adataihoz. A
+                              felhasználó által korábban rögzített adatok és az audit napló bejegyzései megmaradnak.
+                              {isMe && " Figyelem: saját magát távolítja el."}
+                            </p>
+                          }
+                          confirmLabel="Eltávolítás"
+                          onConfirm={() => remove.mutateAsync(m.userId).catch(() => {})}
+                        />
+                      )}
                     </td>
                   </tr>
                 );

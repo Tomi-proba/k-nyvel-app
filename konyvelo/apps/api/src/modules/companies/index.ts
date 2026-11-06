@@ -194,6 +194,7 @@ export const companiesModule: AppModule = {
           isActive: users.isActive,
           role: companyMemberships.role,
           createdAt: companyMemberships.createdAt,
+          portalKezeli: companyMemberships.portalKezeli,
         })
         .from(companyMemberships)
         .innerJoin(users, eq(users.id, companyMemberships.userId))
@@ -276,6 +277,7 @@ export const companiesModule: AppModule = {
             .from(companyMemberships)
             .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.userId, userId)));
           if (!m) throw notFound("A felhasználó nem tagja a cégnek.");
+          if (m.portalKezeli) throw conflict("Ennek a tagnak a hozzáférését a portálon kezelik (Előfizetés → Tagok és hozzáférés).");
           if (m.role === input.role) return;
           if (m.role === "ADMIN" && (await countAdmins(tx, companyId)) <= 1) {
             throw conflict("A cégnek legalább egy Adminisztrátora kell, hogy legyen.");
@@ -312,6 +314,7 @@ export const companiesModule: AppModule = {
             .from(companyMemberships)
             .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.userId, userId)));
           if (!m) throw notFound("A felhasználó nem tagja a cégnek.");
+          if (m.portalKezeli) throw conflict("Ennek a tagnak a hozzáférését a portálon kezelik (Előfizetés → Tagok és hozzáférés).");
           if (m.role === "ADMIN" && (await countAdmins(tx, companyId)) <= 1) {
             throw conflict("A cégnek legalább egy Adminisztrátora kell, hogy legyen.");
           }

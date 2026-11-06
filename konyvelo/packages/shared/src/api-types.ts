@@ -53,6 +53,8 @@ export type MemberDto = {
   role: Role;
   isActive: boolean;
   createdAt: string;
+  /** A tag szerepét a portál adja (F25): itt nem módosítható. */
+  portalKezeli: boolean;
 };
 
 export type PeriodDto = {

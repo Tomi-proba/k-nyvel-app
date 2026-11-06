@@ -95,6 +95,8 @@ export const authEvents = pgTable("auth_events", {
       | "SSO_FAILURE"
       | "SSO_LINKED"
       | "SSO_LOGOUT"
+      | "SSO_ROLE_SYNC"
+      | "SSO_ACCESS_REVOKED"
     >(),
   ip: text("ip"),
   userAgent: text("user_agent"),
@@ -136,6 +138,8 @@ export const companyMemberships = pgTable(
     role: text("role").notNull().$type<"ADMIN" | "CHIEF_ACCOUNTANT" | "ACCOUNTANT" | "VIEWER">(),
     createdAt: ts("created_at").notNull().defaultNow(),
     createdBy: uuid("created_by"),
+    /** A tag szerepét a portál adja (F25): itt nem módosítható, nem távolítható el. */
+    portalKezeli: boolean("portal_kezeli").notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.companyId, t.userId] })],
 );
