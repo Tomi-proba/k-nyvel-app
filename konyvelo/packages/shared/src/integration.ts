@@ -164,7 +164,7 @@ export type ApprovalResultDto = {
   results: Array<{ documentId: string; ok: boolean; serialNumber: string | null; message: string | null }>;
 };
 
-export const MODULE_DISPLAY: Record<string, string> = { konyvelo: "Könyvelő", keszlet: "Készletfigyelő", eafa: "eÁFA" };
+export const MODULE_DISPLAY: Record<string, string> = { konyvelo: "Könyvelő", keszlet: "Készletkezelő", eafa: "eÁFA" };
 
 // ---------- Egyeztetés (TERV.md F16) ----------
 

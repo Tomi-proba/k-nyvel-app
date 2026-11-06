@@ -129,7 +129,7 @@ export const GLOSSARY = {
   },
   integracio: {
     title: "Integráció",
-    text: "A cég többi programja (Készletfigyelő, eÁFA) az integrációs központon keresztül értesíti egymást, pl. a Készletben véglegesített beszerzésből itt szállítói számla piszkozata lesz. Minden automatikus tétel mutatja, honnan jött; ami nem egyértelmű, abból piszkozat és Teendő lesz, és az ELÁBÉ-t mindig ember hagyja jóvá.",
+    text: "A cég többi programja (Készletkezelő, eÁFA) az integrációs központon keresztül értesíti egymást, pl. a Készletben véglegesített beszerzésből itt szállítói számla piszkozata lesz. Minden automatikus tétel mutatja, honnan jött; ami nem egyértelmű, abból piszkozat és Teendő lesz, és az ELÁBÉ-t mindig ember hagyja jóvá.",
   },
   csatolmany: {
     title: "Csatolmány",

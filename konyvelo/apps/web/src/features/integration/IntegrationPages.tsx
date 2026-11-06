@@ -99,7 +99,7 @@ export function IntegrationSettingsPage() {
     <>
       <PageHeader
         title="Integráció"
-        description="A Könyvelő a cég többi programjával (Készletfigyelő, eÁFA) az integrációs központon keresztül kapcsolódik. Kapcsolat nélkül is teljes értékűen működik."
+        description="A Könyvelő a cég többi programjával (Készletkezelő, eÁFA) az integrációs központon keresztül kapcsolódik. Kapcsolat nélkül is teljes értékűen működik."
       />
       {!s.hubConfigured && (
         <div className="alert alert-info">

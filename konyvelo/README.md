@@ -282,7 +282,7 @@ A bizonylathoz (piszkozathoz és könyvelthez is) PDF, JPEG vagy PNG fájl tölt
 
 **Súgó:** a fejléc *Súgó* gombja: a fő műveletek lépésről lépésre, kezdőknek.
 
-## Integráció a többi programmal (Készletfigyelő, eÁFA)
+## Integráció a többi programmal (Készletkezelő, eÁFA)
 
 A Könyvelő az integrációs központon (AWEBOLDAL repó, `apps/kozpont`) keresztül kapcsolódik a cég többi
 programjához (TERV.md F14). **Központ nélkül, vagy amíg a cég nincs összekapcsolva, pontosan úgy működik,

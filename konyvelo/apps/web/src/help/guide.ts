@@ -66,7 +66,7 @@ export const GUIDE: GuideTopic[] = [
   {
     id: "integracio",
     title: "A Készletből érkező tételek jóváhagyása",
-    intro: "Ha a cég Készletfigyelője össze van kötve a Könyvelővel, a Készletben véglegesített beszerzésekből és eladásokból itt piszkozat lesz. Ezeket Önnek kell jóváhagynia.",
+    intro: "Ha a cég Készletkezelője össze van kötve a Könyvelővel, a Készletben véglegesített beszerzésekből és eladásokból itt piszkozat lesz. Ezeket Önnek kell jóváhagynia.",
     steps: [
       "Első alkalommal: Beállítások → Integráció → „Kapcsolódási kód készítése”. A kódot adja meg a közös felületen (vagy az üzemeltetőnek). Az adószám önmagában nem elég.",
       "Ugyanitt ellenőrizze a számla-hozzárendelést (pl. Áruk: 261, ELÁBÉ: 814). A program az alapértelmezett számlatükörből előre kitölti.",

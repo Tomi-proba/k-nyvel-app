@@ -773,7 +773,7 @@ test("integráció: összekapcsolás kóddal, beérkező tételek, csoportos jó
   await expect(page.getByText("3 tétel könyvelve.")).toBeVisible();
   await expect(page.getByText("Nincs jóváhagyásra váró tétel.")).toBeVisible();
   await page.getByRole("region", { name: "Az utolsó jóváhagyás eredménye" }).getByRole("link", { name: /^SZSZ-2026-/ }).first().click();
-  await expect(page.getByText(/Honnan jött: a\(z\) Készletfigyelő/)).toBeVisible();
+  await expect(page.getByText(/Honnan jött: a\(z\) Készletkezelő/)).toBeVisible();
   await expectAccessible(page, "Bizonylat forrásjelöléssel");
 });
 
