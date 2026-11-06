@@ -53,6 +53,11 @@ export const belepesiJegySchema = z.object({
     adoszam: z.string().optional(),
     /** Ha a cég egy könyvelőiroda ügyfele: a kezelő iroda (F26a). */
     iroda: z.object({ id: z.string().uuid(), nev: z.string() }).nullable().default(null),
+    /**
+     * Ügyfélcégnél: a felhasználó az iroda munkatársa (a hozzárendelésből) vagy az ügyfél saját embere (F26a). Az
+     * eÁFA ebből tudja, hogy az ügyfél embere csak a saját adózóját láthatja, az iroda többi ügyfelét nem.
+     */
+    forras: z.enum(["sajat", "iroda"]).default("sajat"),
   }),
 });
 export type BelepesiJegy = z.infer<typeof belepesiJegySchema>;
