@@ -28,6 +28,7 @@ import { useTemplates } from "../documents/queries";
 import { usePartners } from "../partners/usePartners";
 import { LEDGER_TABS } from "../subledger/MoneyPage";
 import { SubNav } from "../subledger/SubledgerPages";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 /**
  * NAV Online Számla import (7. lépés). A NAV-ot az eÁFA kérdezi le a cég NAV-kapcsolatával; a
@@ -296,7 +297,7 @@ export function NavImportPage() {
             </div>
             {invoices.isLoading && <Loading />}
             {invoices.error && <ErrorBox error={invoices.error} />}
-            {invoices.data && invoices.data.length === 0 && <p className="muted">Nincs ilyen számla.</p>}
+            {invoices.data && invoices.data.length === 0 && <UresAllapot>Nincs a feltételeknek megfelelő számla.</UresAllapot>}
             {invoices.data && invoices.data.length > 0 && <InvoiceTable items={invoices.data} />}
           </section>
         </>

@@ -37,6 +37,7 @@ import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
 import { useAccounts } from "../accounts/useAccounts";
 import { documentsKey, useInvalidateDocuments } from "../documents/queries";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 /** Integráció a többi modullal (I2, TERV.md F14). */
 
@@ -286,7 +287,7 @@ function ReconciliationCard({ companyId }: { companyId: string }) {
         soha nem javítja.
       </p>
       {!report ? (
-        <p className="muted">Még nem volt egyeztetés.</p>
+        <UresAllapot>Még nem volt egyeztetés.</UresAllapot>
       ) : (
         <>
           <p className="muted small">
@@ -461,7 +462,7 @@ export function ApprovalsPage() {
           </ul>
         </section>
       )}
-      {groups.length === 0 && <p className="muted">Nincs jóváhagyásra váró tétel.</p>}
+      {groups.length === 0 && <UresAllapot>Nincs jóváhagyásra váró tétel.</UresAllapot>}
       {groups.map((g) => (
         <ApprovalGroup key={`${g.kind}-${g.date}`} group={g} selected={selected} onToggle={toggle} />
       ))}

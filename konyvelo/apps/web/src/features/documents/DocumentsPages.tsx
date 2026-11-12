@@ -21,6 +21,7 @@ import { StatusBadge } from "./StatusBadge";
 import { LEDGER_TABS } from "../subledger/MoneyPage";
 import { SubNav } from "../subledger/SubledgerPages";
 import { FoGomb, useNincsFoGomb } from "../../keret/FoGomb";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 const PAGE_SIZE = 50;
 
@@ -162,14 +163,15 @@ export function DocumentsPage() {
       {list.isLoading && <Loading />}
       {list.error && <ErrorBox error={list.error} />}
       {list.data && list.data.items.length === 0 && (
-        <p className="muted">
-          Nincs a feltételeknek megfelelő bizonylat.{" "}
+        <UresAllapot>
+          Nincs a feltételeknek megfelelő bizonylat.
           {ws.can("ledger:post") && (
             <>
-              Új bizonylat: <Link to={NEW_ENTRY_PATH}>rögzítés</Link> ({NEW_ENTRY_SHORTCUT_TEXT}).
+              {" "}
+              Az „Új bizonylat” gombbal rögzíthet újat ({NEW_ENTRY_SHORTCUT_TEXT}), vagy <Link to={NEW_ENTRY_PATH}>kezdje itt</Link>.
             </>
           )}
-        </p>
+        </UresAllapot>
       )}
       {list.data && list.data.items.length > 0 && (
         <>

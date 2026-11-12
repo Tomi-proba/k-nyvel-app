@@ -27,6 +27,7 @@ import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
 import { accountsKey, useAccounts } from "./useAccounts";
 import { FoGomb } from "../../keret/FoGomb";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 type FormValues = {
   number: string;
@@ -293,12 +294,12 @@ export function ChartOfAccountsPage() {
       {q.error && <ErrorBox error={q.error} />}
 
       {q.data && q.data.length === 0 && (
-        <div className="card">
-          <p>A cégnek még nincs számlatükre.</p>
-          {canManage && (
+        <UresAllapot
+          teendo={
+            canManage && (
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn"
               onClick={async () => {
                 try {
                   const r = await post<{ count: number }>(`/api/companies/${companyId}/accounts/load-default`);
@@ -311,8 +312,11 @@ export function ChartOfAccountsPage() {
             >
               Alapértelmezett számlatükör betöltése
             </button>
-          )}
-        </div>
+            )
+          }
+        >
+          A cégnek még nincs számlatükre.
+        </UresAllapot>
       )}
 
       {q.data && q.data.length > 0 && (

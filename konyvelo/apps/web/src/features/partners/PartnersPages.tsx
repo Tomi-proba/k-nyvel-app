@@ -12,6 +12,7 @@ import { useToast } from "../../ui/Toasts";
 import { PartnerForm } from "./PartnerForm";
 import { PARTNER_TABS, PartnerOpenItems, SubNav } from "../subledger/SubledgerPages";
 import { FoGomb, useNincsFoGomb } from "../../keret/FoGomb";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 const partnersKey = (companyId: string | undefined) => ["partners", companyId] as const;
 
@@ -82,7 +83,11 @@ export function PartnersPage() {
       </div>
       {list.isLoading && <Loading />}
       {list.error && <ErrorBox error={list.error} />}
-      {list.data && list.data.length === 0 && <p className="muted">Nincs a feltételeknek megfelelő partner.</p>}
+      {list.data && list.data.length === 0 && (
+        <UresAllapot>
+          Nincs a feltételeknek megfelelő partner.{ws.can("partners:manage") && " Az „Új partner” gombbal vehet fel."}
+        </UresAllapot>
+      )}
       {list.data && list.data.length > 0 && (
         <div className="card table-wrap">
           <table>

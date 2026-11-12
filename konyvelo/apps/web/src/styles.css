@@ -1086,3 +1086,28 @@ tr.clickable:hover td {
 .konyvelo-keret--keskeny {
   max-width: 44rem;
 }
+
+.fg-ures > p { margin: 0; }
+.fg-ures__teendo { margin-top: 0.75rem; }
+
+/* Választógombok felirattal (F27 B4): telefonon a hosszú felirat a gomb mellett törik, nem alá, így minden
+   választásnak látszik a felirata; a csoport (fieldset.stack) nem lóg ki a dobozából. */
+fieldset.stack {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+fieldset.stack > legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+fieldset.stack > label.row:has(> input[type="radio"]) {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+fieldset.stack > label.row > input[type="radio"] {
+  flex: 0 0 auto;
+  margin-top: 0.2em;
+}

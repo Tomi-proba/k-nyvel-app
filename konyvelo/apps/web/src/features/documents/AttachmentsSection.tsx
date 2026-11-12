@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
 import { documentsKey, useInvalidateDocuments } from "./queries";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 const TYPE_LABEL: Record<AttachmentDto["mimeType"], string> = { "application/pdf": "PDF", "image/jpeg": "JPEG", "image/png": "PNG" };
 
@@ -96,7 +97,7 @@ export function AttachmentsSection({ documentId, posted }: { documentId: string;
         </div>
       )}
       {items.length === 0 && !list.isLoading ? (
-        <p className="muted">Nincs csatolmány.</p>
+        <UresAllapot>Nincs csatolmány.</UresAllapot>
       ) : (
         <ul className="plain-list stack">
           {items.map((a) => (

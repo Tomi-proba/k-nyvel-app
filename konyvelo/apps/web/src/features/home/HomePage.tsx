@@ -11,6 +11,7 @@ import { fiscalYearLabel, periodLabel } from "../../lib/format";
 import { ErrorBox, Loading, PageHeader } from "../../ui/Page";
 import { HelpTip } from "../../ui/Tooltip";
 import { deadlineText, useTodos } from "../documents/queries";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 type Todo = { key: string; to: string; title: string; detail?: string; tone: "danger" | "warning" | "info" };
 
@@ -27,16 +28,19 @@ function TodoCard() {
 
   if (!ws.fiscalYearsLoading && ws.fiscalYears.length === 0) {
     return (
-      <div className="stack">
-        <p>Még nincs üzleti év. A könyveléshez hozza létre az első üzleti évet.</p>
-        {ws.can("fiscalYear:manage") ? (
-          <Link to="/beallitasok/uzleti-evek" className="btn btn-primary">
-            Üzleti év létrehozása
-          </Link>
-        ) : (
-          <p className="muted">Ezt Adminisztrátor vagy Vezető könyvelő teheti meg.</p>
-        )}
-      </div>
+      <UresAllapot
+        teendo={
+          ws.can("fiscalYear:manage") ? (
+            <Link to="/beallitasok/uzleti-evek" className="btn">
+              Üzleti év létrehozása
+            </Link>
+          ) : (
+            "Ezt Adminisztrátor vagy Vezető könyvelő teheti meg."
+          )
+        }
+      >
+        Még nincs üzleti év. A könyveléshez hozza létre az első üzleti évet.
+      </UresAllapot>
     );
   }
   if (todos.isLoading) return <Loading />;
@@ -189,7 +193,7 @@ function TodoCard() {
     });
   }
 
-  if (items.length === 0) return <p className="muted">Nincs teendő. Minden bizonylat könyvelve van.</p>;
+  if (items.length === 0) return <UresAllapot>Nincs teendő. Minden bizonylat könyvelve van.</UresAllapot>;
   return (
     <ul className="todo-list">
       {items.map((i) => (
@@ -295,7 +299,7 @@ export function HomePage() {
               </div>
             </dl>
           ) : (
-            <p className="muted">Nincs kiválasztott üzleti év.</p>
+            <UresAllapot>Nincs kiválasztott üzleti év.</UresAllapot>
           )}
         </section>
 

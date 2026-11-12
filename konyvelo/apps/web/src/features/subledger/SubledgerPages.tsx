@@ -15,6 +15,7 @@ import { ErrorBox, Loading, PageHeader } from "../../ui/Page";
 import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
 import { useInvalidateDocuments } from "../documents/queries";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 export const openItemsKey = (companyId: string | undefined) => ["open-items", companyId] as const;
 
@@ -60,7 +61,7 @@ export const PARTNER_TABS = [
 const docLabel = (d: { serialNumber: string | null; externalNumber: string | null }) => d.serialNumber ?? "";
 
 export function OpenItemsTable({ items, showPartner, asOf }: { items: OpenItemDto[]; showPartner?: boolean; asOf: string }) {
-  if (items.length === 0) return <p className="muted">Nincs nyitott tétel.</p>;
+  if (items.length === 0) return <UresAllapot>Nincs nyitott tétel.</UresAllapot>;
   return (
     <div className="table-wrap">
       <table>

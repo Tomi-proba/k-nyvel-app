@@ -9,6 +9,7 @@ import { Field } from "../../ui/Field";
 import { ErrorBox, Loading, PageHeader } from "../../ui/Page";
 import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 const kb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("hu-HU")} kB`;
 
@@ -94,7 +95,7 @@ export function BackupExportPage() {
         <h3>Korábbi exportok</h3>
         {history.isLoading && <Loading />}
         {history.error && <ErrorBox error={history.error} />}
-        {history.data && history.data.length === 0 && <p className="muted">Még nem készült export.</p>}
+        {history.data && history.data.length === 0 && <UresAllapot>Még nem készült export.</UresAllapot>}
         {history.data && history.data.length > 0 && (
           <div className="table-wrap">
             <table className="table">

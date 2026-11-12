@@ -12,6 +12,7 @@ import { PageHeader } from "../../ui/Page";
 import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
 import { FoGomb } from "../../keret/FoGomb";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 const STATUS_LABELS: Record<FiscalYearDto["status"], string> = {
   OPEN: "Nyitott",
@@ -124,7 +125,7 @@ export function FiscalYearsPage() {
         />
       )}
       {!canManage && ws.fiscalYears.length === 0 && (
-        <div className="alert alert-info">Még nincs üzleti év. Létrehozni Adminisztrátor vagy Vezető könyvelő tud.</div>
+        <UresAllapot>Még nincs üzleti év. Létrehozni Adminisztrátor vagy Vezető könyvelő tud.</UresAllapot>
       )}
 
       {years.map((y) => (

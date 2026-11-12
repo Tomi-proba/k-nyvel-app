@@ -14,6 +14,7 @@ import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
 import { useAccounts } from "../accounts/useAccounts";
 import { templatesKey, useTemplates } from "../documents/queries";
+import { UresAllapot } from "../../ui/UresAllapot";
 
 type LineForm = { key: number; accountId: string | null; side: LineSide; base: AmountBase };
 type FormState = { name: string; shortcut: string; docType: string; description: string; vatRate: string; isActive: boolean; lines: LineForm[] };
@@ -60,13 +61,12 @@ export function TemplatesPage() {
       {(q.isLoading || accounts.isLoading) && <Loading />}
       {q.error && <ErrorBox error={q.error} />}
       {q.data && q.data.length === 0 && (
-        <div className="card stack">
-          <p>Még nincs sablon.</p>
-          {canEdit && (
-            <div>
+        <UresAllapot
+          teendo={
+            canEdit && (
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn"
                 onClick={async () => {
                   try {
                     const r = await post<{ count: number }>(`/api/companies/${companyId}/templates/load-default`);
@@ -79,9 +79,11 @@ export function TemplatesPage() {
               >
                 Alapértelmezett sablonok betöltése
               </button>
-            </div>
-          )}
-        </div>
+            )
+          }
+        >
+          Még nincs sablon.{canEdit && " Az „Új sablon” gombbal vehet fel, vagy betöltheti az alapértelmezetteket."}
+        </UresAllapot>
       )}
       {q.data && q.data.length > 0 && (
         <div className="card table-wrap">
