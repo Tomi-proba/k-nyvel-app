@@ -230,6 +230,21 @@ const MANUAL_RESOLVE = new Set(["INVOICE_MISSING", "PARTNER", "SOURCE_WITHDRAWN"
 
 // ---------- Útvonalak ----------
 
+/**
+ * Egyszer használható kapcsolódási kód a központhoz (24 óráig érvényes); a korábbi, fel nem használt kód érvényét
+ * veszti. A felületről (adminisztrátor) és a portál aláírt kérésére (F27 K: automatikus összekapcsolás) is.
+ */
+export async function createIntegrationLinkCode(db: Db, companyId: string, userId: string, ip: string | null) {
+  const code = Array.from({ length: 16 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
+  const expiresAt = new Date(Date.now() + CODE_TTL_HOURS * 3600_000);
+  await db.transaction(async (tx) => {
+    await tx.update(integrationLinkCodes).set({ revokedAt: new Date() }).where(and(eq(integrationLinkCodes.companyId, companyId), isNull(integrationLinkCodes.usedAt), isNull(integrationLinkCodes.revokedAt)));
+    await tx.insert(integrationLinkCodes).values({ companyId, codeHash: sha(code), createdBy: userId, expiresAt });
+    await writeAudit(tx, { companyId, userId, action: "integration.link_code", entityType: "company", entityId: companyId, after: { expiresAt: expiresAt.toISOString() }, ip });
+  });
+  return { code: `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}-${code.slice(12)}`, expiresAt: expiresAt.toISOString() };
+}
+
 export const integrationModule: AppModule = {
   name: "integration",
   async register(app, { db, config }) {
@@ -272,14 +287,7 @@ export const integrationModule: AppModule = {
       const { companyId } = request.params;
       const { user } = await requireCompanyPermission(db, request, companyId, "company:update");
       if (!config.hub) throw conflict("Az integrációs központ nincs beállítva ebben a Könyvelőben (KOZPONT_URL, KOZPONT_TITOK); lásd ELESITES.md.");
-      const code = Array.from({ length: 16 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
-      const expiresAt = new Date(Date.now() + CODE_TTL_HOURS * 3600_000);
-      await db.transaction(async (tx) => {
-        await tx.update(integrationLinkCodes).set({ revokedAt: new Date() }).where(and(eq(integrationLinkCodes.companyId, companyId), isNull(integrationLinkCodes.usedAt), isNull(integrationLinkCodes.revokedAt)));
-        await tx.insert(integrationLinkCodes).values({ companyId, codeHash: sha(code), createdBy: user.id, expiresAt });
-        await writeAudit(tx, { companyId, userId: user.id, action: "integration.link_code", entityType: "company", entityId: companyId, after: { expiresAt: expiresAt.toISOString() }, ip: request.ip });
-      });
-      return { code: `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}-${code.slice(12)}`, expiresAt: expiresAt.toISOString() };
+      return createIntegrationLinkCode(db, companyId, user.id, request.ip);
     });
 
     /** Az összekapcsolás bontása a Könyvelő felől: nem keletkezik több esemény, és bejövőt sem fogad. */

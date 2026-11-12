@@ -473,6 +473,46 @@ export async function navTodos(db: Executor, companyId: string): Promise<{ pendi
 
 // ---------- Útvonalak ----------
 
+/** Van-e NAV-kapcsolat (az eÁFA-n át) a cégnél. */
+export async function hasNavConnection(db: Executor, companyId: string): Promise<boolean> {
+  return (await loadConnection(db, companyId)) !== null;
+}
+
+/**
+ * Összekapcsolás az eÁFA kapcsolódási kódjával; az eÁFA a cég adószámát is ellenőrzi. A felületről és a portál
+ * aláírt kérésére (F27 K: automatikus összekapcsolás, a kódot a portál kéri az eÁFA-tól) is.
+ */
+export async function linkNavWithCode(db: Db, config: Config, companyId: string, userId: string, code: string, ip: string | null) {
+  const gateway = gatewayOf(config);
+  if (await loadConnection(db, companyId)) throw conflict("A cég már össze van kapcsolva. Új kód használatához előbb bontsa a kapcsolatot.");
+  const [company] = await db.select({ name: companies.name, taxNumber: companies.taxNumber }).from(companies).where(eq(companies.id, companyId));
+  const link = await gateway.link({ code, taxNumber: company!.taxNumber, companyRef: companyId, companyName: company!.name }).catch(gatewayAppError);
+  const r = remoteOf(link);
+  await db.transaction(async (tx) => {
+    await tx.insert(navConnections).values({
+      companyId,
+      linkId: link.linkId,
+      environment: link.environment,
+      eafaTaxpayerName: link.taxpayerName ?? company!.name,
+      eafaTaxNumber: link.taxNumber ?? company!.taxNumber,
+      linkedBy: userId,
+      remoteState: r.state,
+      remoteTitle: r.title,
+      remoteAction: r.action,
+      remoteCheckedAt: new Date(),
+    });
+    await writeAudit(tx, {
+      companyId,
+      userId,
+      action: "nav.link",
+      entityType: "nav_connection",
+      entityId: companyId,
+      after: { environment: link.environment, eafaTaxpayerName: link.taxpayerName, eafaTaxNumber: link.taxNumber },
+      ip,
+    });
+  });
+}
+
 export const navModule: AppModule = {
   name: "nav",
   register(app, { db, config }) {
@@ -491,34 +531,7 @@ export const navModule: AppModule = {
       const { companyId } = request.params;
       const { user } = await requireCompanyPermission(db, request, companyId, "company:update");
       const input = parseBody(navLinkSchema, request.body);
-      const gateway = gatewayOf(config);
-      if (await loadConnection(db, companyId)) throw conflict("A cég már össze van kapcsolva. Új kód használatához előbb bontsa a kapcsolatot.");
-      const [company] = await db.select({ name: companies.name, taxNumber: companies.taxNumber }).from(companies).where(eq(companies.id, companyId));
-      const link = await gateway.link({ code: input.code, taxNumber: company!.taxNumber, companyRef: companyId, companyName: company!.name }).catch(gatewayAppError);
-      const r = remoteOf(link);
-      await db.transaction(async (tx) => {
-        await tx.insert(navConnections).values({
-          companyId,
-          linkId: link.linkId,
-          environment: link.environment,
-          eafaTaxpayerName: link.taxpayerName ?? company!.name,
-          eafaTaxNumber: link.taxNumber ?? company!.taxNumber,
-          linkedBy: user.id,
-          remoteState: r.state,
-          remoteTitle: r.title,
-          remoteAction: r.action,
-          remoteCheckedAt: new Date(),
-        });
-        await writeAudit(tx, {
-          companyId,
-          userId: user.id,
-          action: "nav.link",
-          entityType: "nav_connection",
-          entityId: companyId,
-          after: { environment: link.environment, eafaTaxpayerName: link.taxpayerName, eafaTaxNumber: link.taxNumber },
-          ip: request.ip,
-        });
-      });
+      await linkNavWithCode(db, config, companyId, user.id, input.code, request.ip);
       return reply.code(201).send(await connectionDto(db, config, companyId, false));
     });
 

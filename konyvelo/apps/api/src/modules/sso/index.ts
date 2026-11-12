@@ -19,7 +19,9 @@ import { randomBytes } from "node:crypto";
 import { and, count, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { createRemoteJWKSet, type JWTVerifyGetKey } from "jose";
 import { z } from "zod";
-import { JegyHiba, belepesiJegyEllenorzes, kilepesiJegyEllenorzes, tagsagJelzesEllenorzes, type BelepesiJegy } from "@konyvelo/esemenyek";
+import { JegyHiba, belepesiJegyEllenorzes, kilepesiJegyEllenorzes, portalKeresEllenorzes, tagsagJelzesEllenorzes, type BelepesiJegy } from "@konyvelo/esemenyek";
+import { createIntegrationLinkCode } from "../integration";
+import { hasNavConnection, linkNavWithCode } from "../nav";
 import { hasPermission, type Role } from "@konyvelo/shared";
 import type { Config } from "../../config";
 import { writeAudit } from "../../core/audit";
@@ -352,6 +354,37 @@ export const ssoModule: AppModule = {
       await db.transaction((tx) => tagsag(tx, link.userId, t.ceg.id, role, request.ip));
       await db.insert(authEvents).values({ userId: link.userId, email: t.email, event: role ? "SSO_ROLE_SYNC" : "SSO_ACCESS_REVOKED", ip: request.ip });
       return reply.code(204).send();
+    });
+
+    /**
+     * A portál kérése (F27 K: a programok automatikus összekapcsolása, kód másolása nélkül): a portál cégéhez
+     * rendelt Könyvelő-cégre kapcsolódási kód a központhoz, illetve a NAV-hozzáférés állapota és összekapcsolása az
+     * eÁFA kódjával. A hitelességet a portál aláírása adja (egyszer használható, 60 másodpercig érvényes); a
+     * műveletet a Könyvelő-cég létrehozója nevében naplózzuk. Ha a cég még nincs meg (a tulajdonos még nem
+     * nyitotta meg a Könyvelőt), 409 NINCS_CEG: a portál később újra próbálja.
+     */
+    app.post("/api/auth/sso/keres", async (request, reply) => {
+      const sso = kellSso();
+      const { keres } = parseBody(z.object({ keres: z.string().min(20).max(8000) }), request.body);
+      let k;
+      try {
+        k = await portalKeresEllenorzes(keres, { kulcsok: kulcsok(), kiado: sso.kiado, modul: "konyvelo", felhasznal });
+      } catch (e) {
+        hiba(e);
+      }
+      const [ceg] = await db.select({ id: companies.id, createdBy: companies.createdBy }).from(companies).where(eq(companies.portalCompanyId, k.ceg.id)).limit(1);
+      if (!ceg) return reply.code(409).send({ code: "NINCS_CEG", message: "A Könyvelő még nincs megnyitva ennél a cégnél." });
+      if (k.feladat === "kozpont-kod") {
+        if (!config.hub) throw new AppError(409, "CONFLICT", "Az integrációs központ nincs beállítva ebben a Könyvelőben.");
+        const c = await createIntegrationLinkCode(db, ceg.id, ceg.createdBy, request.ip);
+        return { kod: c.code, lejar: c.expiresAt };
+      }
+      if (k.feladat === "nav-kapcsolas") {
+        if (!config.eafaGateway) throw new AppError(409, "CONFLICT", "Az eÁFA NAV-átjárója nincs beállítva ebben a Könyvelőben.");
+        if (k.kod && !(await hasNavConnection(db, ceg.id))) await linkNavWithCode(db, config, ceg.id, ceg.createdBy, k.kod, request.ip);
+        return { kapcsolva: await hasNavConnection(db, ceg.id) };
+      }
+      throw new AppError(422, "VALIDATION", "Ezt a kérést a Könyvelő nem szolgálja ki.");
     });
 
     /** Átállási lista a cég-adminisztrátornak: az általa kezelt cégek tagjai. */
