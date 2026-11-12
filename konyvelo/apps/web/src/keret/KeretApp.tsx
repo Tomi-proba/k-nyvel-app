@@ -140,6 +140,7 @@ function CegOsszerendeles({ me, onKesz }: { me: MeResponse; onKesz: () => Promis
   const [valasztott, setValasztott] = useState(valaszthato[0]?.id ?? "");
   const [hiba, setHiba] = useState<string | null>(null);
   const [folyamatban, setFolyamatban] = useState(false);
+  const [automatikusHiba, setAutomatikusHiba] = useState<string | null>(null);
 
   if (k.ceg.szerep !== "tulajdonos") {
     return (
@@ -159,6 +160,10 @@ function CegOsszerendeles({ me, onKesz }: { me: MeResponse; onKesz: () => Promis
     await onKesz();
   };
 
+  // Aki most vásárolt (nincs meglévő Könyvelő-cége): a cég a portál cégadataival és az első üzleti év magától
+  // létrejön, kérdés nélkül. Ha valami hiányzik (pl. az adószám), az űrlap jelenik meg a hibával.
+  if (!valaszthato.length && !automatikusHiba) return <AutomatikusBeallitas onHiba={setAutomatikusHiba} onKesz={onKesz} />;
+
   return (
     <div className="konyvelo-keret konyvelo-keret--keskeny" data-ceg-osszerendeles>
       <h1>Könyvelő – a cég első megnyitása</h1>
@@ -176,9 +181,9 @@ function CegOsszerendeles({ me, onKesz }: { me: MeResponse; onKesz: () => Promis
           </label>
         </div>
       )}
-      {hiba && (
+      {(hiba ?? automatikusHiba) && (
         <div className="alert alert-error" role="alert">
-          {hiba}
+          {hiba ?? `A Könyvelő-cég nem jött létre magától: ${automatikusHiba} Kérjük, ellenőrizze az adatokat.`}
         </div>
       )}
       {mod === "meglevo" ? (
@@ -221,6 +226,35 @@ function CegOsszerendeles({ me, onKesz }: { me: MeResponse; onKesz: () => Promis
       )}
     </div>
   );
+}
+
+/**
+ * Első megnyitás, meglévő Könyvelő-cég nélkül: a Könyvelő-cég a portál cégadataival, utána az első üzleti év (a
+ * javasolt dátumokkal) magától létrejön. A beszámolóforma és az árfolyamforrás az alapértelmezett; a Beállításokban
+ * bármikor módosítható.
+ */
+function AutomatikusBeallitas({ onHiba, onKesz }: { onHiba: (uzenet: string) => void; onKesz: () => Promise<void> }) {
+  const k = useKeret();
+  const elindult = useRef(false);
+  useEffect(() => {
+    if (elindult.current) return;
+    elindult.current = true;
+    void (async () => {
+      const ceg = await post<CompanyDto>("/api/companies", {
+        name: k.ceg.nev,
+        shortName: k.ceg.nev.slice(0, 60),
+        taxNumber: k.ceg.adoszam,
+        reportType: "SIMPLIFIED_ANNUAL",
+        fxRateSource: "MNB",
+      });
+      await post("/api/auth/sso/ceg", { companyId: ceg.id });
+      const javaslat = await get<{ startDate: string; endDate: string }>(`/api/companies/${ceg.id}/fiscal-years/suggestion`);
+      await post(`/api/companies/${ceg.id}/fiscal-years`, javaslat);
+      k.ertesit(`A Könyvelő elkészült (${k.ceg.nev})`, "siker");
+      await onKesz();
+    })().catch((err) => onHiba(uzenet(err)));
+  }, [k, onHiba, onKesz]);
+  return <Loading label="A Könyvelő előkészítése a cég adataival…" />;
 }
 
 /** A keretbeli elrendezés: a fejléc a kereté; itt csak a Könyvelő eszközsora és a tartalom. */

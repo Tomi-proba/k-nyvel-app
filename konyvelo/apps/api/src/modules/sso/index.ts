@@ -171,18 +171,19 @@ export const ssoModule: AppModule = {
         return { kovetkezo: "kesz", companyId };
       }
 
-      // Nincs még összekapcsolva. Ha a cég össze van rendelve, és ezzel az e-mail-címmel nincs régi fiók,
-      // új fiók készül (a portál a kétlépcsős azonosítást már elvégezte). Különben: összekapcsolás.
+      // Nincs még összekapcsolva. Ha ezzel az e-mail-címmel nincs régi fiók, új fiók készül magától (a portál a
+      // kétlépcsős azonosítást már elvégezte): ha a cég már össze van rendelve, vagy a belépő a portál-cég
+      // tulajdonosa (aki most vásárolt: nincs mit összekapcsolni). Összekapcsolás csak akkor kell, ha van régi fiók.
       const [regi] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${j.email.toLowerCase()}`).limit(1);
       const [mapped] = await db.select({ id: companies.id }).from(companies).where(eq(companies.portalCompanyId, j.ceg.id)).limit(1);
-      if (!regi && mapped) {
+      if (!regi && (mapped || j.ceg.szerep === "tulajdonos")) {
         if (szerepkor(j.ceg.szerep, j.ceg.modulSzerep) === null) throw nincsHozzaferes();
         const passwordHash = await hashPassword(randomBytes(32).toString("base64url")); // régi belépésre nem használható
         const userId = await db.transaction(async (tx) => {
           const [u] = await tx.insert(users).values({ email: j.email.toLowerCase(), name: j.name || j.email, passwordHash }).returning({ id: users.id });
           await tx.insert(ssoLinks).values({ portalSub: j.sub, userId: u!.id, method: "UJ_FIOK" });
           await writeAudit(tx, {
-            companyId: mapped.id,
+            companyId: mapped?.id ?? null,
             userId: u!.id,
             action: "user.create",
             entityType: "user",
@@ -195,7 +196,7 @@ export const ssoModule: AppModule = {
         });
         await munkamenet(reply, request, userId, portal);
         await db.insert(authEvents).values({ userId, email: j.email, event: "SSO_LINKED", ip: request.ip });
-        return { kovetkezo: "kesz", companyId: mapped.id };
+        return { kovetkezo: "kesz", companyId: mapped?.id ?? null };
       }
 
       const kapcsolas = randomBytes(32).toString("base64url");

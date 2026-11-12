@@ -321,13 +321,11 @@ describe("közös belépés a portál jegyével", () => {
     expect(ra).toMatchObject({ kovetkezo: "osszekapcsolas", ujFiokLehet: false });
     expect((await new Client(sso.app).post("/api/auth/sso/uj-fiok", { kapcsolas: ra.kapcsolas })).statusCode).toBe(409);
 
+    // Aki most vásárolt (portál-tulajdonos, régi fiók nélkül): a fiók magától létrejön, összekapcsolás nélkül.
     const t = new Client(sso.app);
     const r = (await t.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-tulaj", sid: "sid-tulaj", email: "Tulaj@Example.hu", name: "Tulaj Tamás", cegId: ujCeg }) })).json();
-    expect(r).toMatchObject({ kovetkezo: "osszekapcsolas", ujFiokLehet: true, cegOsszerendelve: false });
+    expect(r).toEqual({ kovetkezo: "kesz", companyId: null });
     expect((await t.post("/api/auth/sso/uj-fiok", { kapcsolas: "x".repeat(40) })).statusCode).toBe(401);
-    expect((await t.post("/api/auth/sso/uj-fiok", { kapcsolas: r.kapcsolas })).json()).toEqual({ kovetkezo: "kesz", companyId: null });
-    // A kapcsolás egyszer használható.
-    expect((await t.post("/api/auth/sso/uj-fiok", { kapcsolas: r.kapcsolas })).statusCode).toBe(401);
     const me = (await t.get("/api/auth/me")).json();
     expect(me).toMatchObject({ user: { email: "tulaj@example.hu", name: "Tulaj Tamás" }, companies: [], ssoPortalCompanyId: ujCeg });
 
@@ -415,8 +413,7 @@ describe("F26a: könyvelőiroda – az ügyfelek elkülönítése a Könyvelőbe
   it("az irodavezető mindkét ügyfelet megnyitja; ügyfelenként külön Könyvelő-cég", async () => {
     const v = new Client(sso.app);
     const r = (await v.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-vezeto", sid: "sid-vezeto-1", email: "vezeto@iroda.hu", name: "Vezető Vera", cegId: ugyfel1, iroda }) })).json();
-    expect(r).toMatchObject({ kovetkezo: "osszekapcsolas", ujFiokLehet: true });
-    await v.post("/api/auth/sso/uj-fiok", { kapcsolas: r.kapcsolas });
+    expect(r).toEqual({ kovetkezo: "kesz", companyId: null });
     c1 = (await createCompany(v, { name: "Első Ügyfél Kft.", shortName: "Első Ügyfél" })).id;
     expect((await v.post("/api/auth/sso/ceg", { companyId: c1 })).statusCode).toBe(200);
 
