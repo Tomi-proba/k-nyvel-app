@@ -671,6 +671,16 @@ test("mobil nézet: nincs vízszintes görgetés, a menü elérhető", async ({ 
   await expect(page.getByRole("heading", { level: 1, name: "Új bizonylat" })).toBeVisible();
   const entryOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(entryOverflow).toBeLessThanOrEqual(0);
+  // A beállítások (almenü + tartalom) sem szélesebb a képernyőnél; a „Könyvelés módja” minden választójának
+  // felirata a gomb mellett van (F27 B4).
+  await page.goto("/beallitasok/integracio");
+  await expect(page.getByRole("heading", { level: 1, name: "Integráció" })).toBeVisible();
+  const settingsOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(settingsOverflow).toBeLessThanOrEqual(0);
+  for (const radio of await page.getByRole("radio").all()) {
+    const [r, l] = await radio.evaluate((el) => [el.getBoundingClientRect(), el.parentElement!.getBoundingClientRect()].map((b) => ({ top: b.top, bottom: b.bottom })));
+    expect(r!.top - l!.top, "a választó és a felirata egy sorban kezdődik").toBeLessThan(12);
+  }
 });
 
 test("NAV-import: összekapcsolás kóddal, lekérdezés, javaslat, jóváhagyás", async ({ page }) => {

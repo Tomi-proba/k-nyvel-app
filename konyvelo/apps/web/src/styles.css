@@ -176,7 +176,7 @@ main {
 
 .settings-layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px minmax(0, 1fr);
   gap: 24px;
 }
 .settings-nav ul {
@@ -204,7 +204,11 @@ main {
 
 @media (max-width: 760px) {
   .settings-layout {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr): az oszlop ne nőjön a legszélesebb tartalomhoz (telefonon nincs vízszintes görgetés, F27 B4). */
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings-layout > * {
+    min-width: 0;
   }
   .settings-nav ul {
     flex-direction: row;
@@ -1110,4 +1114,12 @@ fieldset.stack > label.row:has(> input[type="radio"]) {
 fieldset.stack > label.row > input[type="radio"] {
   flex: 0 0 auto;
   margin-top: 0.2em;
+}
+
+/* Telefonon a hosszú gombfelirat sort törhet, ne nyújtsa szélesebbre az oldalt (F27 B4). */
+@media (max-width: 480px) {
+  .btn {
+    white-space: normal;
+    text-align: center;
+  }
 }
