@@ -22,6 +22,7 @@ import { ujQueryClient } from "../lib/lekerdezes";
 import { ErrorBox, Loading } from "../ui/Page";
 import { Tooltip } from "../ui/Tooltip";
 import { keretModBeallitas } from "./futas";
+import { FoGombKontextus, type FoMuvelet } from "./FoGomb";
 import { Link, NavLink, useNavigate } from "./router";
 
 const queryClient = ujQueryClient();
@@ -263,7 +264,16 @@ export function KeretLayout() {
   const navigate = useNavigate();
   const gy = useGyorsbillentyuk();
   const ujTetel = keretBillentyu("uj-tetel");
-  useGyorsbillentyu(ujTetel, () => navigate(NEW_ENTRY_PATH));
+  // Egy fő gomb oldalanként (F27 B3): az oldal adja meg (FoGomb), különben az „Új bizonylat”; űrlapon nincs.
+  const [foMuvelet, setFoMuvelet] = useState<FoMuvelet | null | undefined>(undefined);
+  const fo: FoMuvelet | null =
+    foMuvelet === null ? null : foMuvelet ?? (ws.can("ledger:post") ? { cim: "Új bizonylat", to: NEW_ENTRY_PATH } : null);
+  const futtat = () => {
+    if (!fo) return;
+    if (fo.to) navigate(fo.to);
+    else fo.onClick?.();
+  };
+  useGyorsbillentyu(fo ? ujTetel : undefined, futtat);
   const nincsEv = ws.keretIdoszak && !ws.fiscalYear && !ws.fiscalYearsLoading && ws.fiscalYears.length > 0;
 
   return (
@@ -273,14 +283,16 @@ export function KeretLayout() {
           {ws.fiscalYear ? `Üzleti év: ${fiscalYearLabel(ws.fiscalYear)}` : ""}
         </span>
         <span className="header-spacer" />
-        <Tooltip content={<>Új tétel rögzítése – {feliratok(ujTetel, gy.mac)}</>}>
-          <button type="button" className="btn btn-primary" aria-keyshortcuts={ariaFelirat(ujTetel)} onClick={() => navigate(NEW_ENTRY_PATH)}>
-            <span aria-hidden="true">+</span> Új tétel
-          </button>
-        </Tooltip>
         <NavLink to="/sugo" className="btn btn-small">
           Súgó
         </NavLink>
+        {fo && (
+          <Tooltip content={<>{fo.cim} – {feliratok(ujTetel, gy.mac)}</>}>
+            <button type="button" className="btn btn-primary" aria-keyshortcuts={ariaFelirat(ujTetel)} onClick={futtat} data-fo-gomb>
+              <span aria-hidden="true">+</span> {fo.cim}
+            </button>
+          </Tooltip>
+        )}
       </div>
       {nincsEv && ws.keretIdoszak && (
         <div className="alert alert-warning" role="status" data-nincs-uzleti-ev>
@@ -292,7 +304,9 @@ export function KeretLayout() {
           )}
         </div>
       )}
-      <Outlet />
+      <FoGombKontextus.Provider value={setFoMuvelet}>
+        <Outlet />
+      </FoGombKontextus.Provider>
     </div>
   );
 }

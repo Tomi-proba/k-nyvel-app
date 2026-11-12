@@ -18,6 +18,7 @@ import { DocumentIntegrationPanel } from "../integration/IntegrationPages";
 import { AttachmentsSection } from "./AttachmentsSection";
 import { StatusBadge } from "./StatusBadge";
 import { deadlineText, useInvalidateDocuments } from "./queries";
+import { FoGomb } from "../../keret/FoGomb";
 
 const RefLink = ({ r }: { r: DocumentRef }) => (
   <Link to={`/konyveles/${r.id}`} className="mono">
@@ -59,9 +60,7 @@ export function DocumentView({ doc }: { doc: DocumentDto }) {
                   Másolás új bizonylatba
                 </Link>
               )}
-              <Link to={NEW_ENTRY_PATH} className="btn btn-primary">
-                Új bizonylat
-              </Link>
+              <FoGomb cim="Új bizonylat" to={NEW_ENTRY_PATH} />
             </>
           )
         }

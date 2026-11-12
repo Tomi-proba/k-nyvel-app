@@ -20,6 +20,7 @@ import { deadlineText, documentsKey, useDocument } from "./queries";
 import { StatusBadge } from "./StatusBadge";
 import { LEDGER_TABS } from "../subledger/MoneyPage";
 import { SubNav } from "../subledger/SubledgerPages";
+import { FoGomb, useNincsFoGomb } from "../../keret/FoGomb";
 
 const PAGE_SIZE = 50;
 
@@ -89,11 +90,17 @@ export function DocumentsPage() {
         }
         actions={
           ws.can("ledger:post") && (
-            <Tooltip content={<>Új bizonylat – {NEW_ENTRY_SHORTCUT_TEXT}</>}>
-              <Link to={NEW_ENTRY_PATH} className="btn btn-primary" aria-keyshortcuts="Alt+N F2 N">
-                Új bizonylat
-              </Link>
-            </Tooltip>
+            <FoGomb
+              cim="Új bizonylat"
+              to={NEW_ENTRY_PATH}
+              onallo={
+                <Tooltip content={<>Új bizonylat – {NEW_ENTRY_SHORTCUT_TEXT}</>}>
+                  <Link to={NEW_ENTRY_PATH} className="btn btn-primary" aria-keyshortcuts="Alt+N F2 N">
+                    Új bizonylat
+                  </Link>
+                </Tooltip>
+              }
+            />
           )
         }
       />
@@ -231,6 +238,7 @@ export function DocumentsPage() {
 /** Új bizonylat; ?masolat=<id> másolatként, ?helyesbit=<id> helyesbítő bizonylatként, ?tipus=SZSZ típussal. */
 export function NewDocumentPage() {
   const ws = useWorkspace();
+  useNincsFoGomb();
   const [params] = useSearchParams();
   const copyId = params.get("masolat");
   const correctId = params.get("helyesbit");

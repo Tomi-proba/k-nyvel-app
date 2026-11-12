@@ -26,6 +26,7 @@ import { ErrorBox, Loading, PageHeader } from "../../ui/Page";
 import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
 import { accountsKey, useAccounts } from "./useAccounts";
+import { FoGomb } from "../../keret/FoGomb";
 
 type FormValues = {
   number: string;
@@ -283,9 +284,7 @@ export function ChartOfAccountsPage() {
         }
         actions={
           canManage && (
-            <button type="button" className="btn btn-primary" onClick={() => setDialog({ account: null })}>
-              Új számla
-            </button>
+            <FoGomb cim="Új számla" onClick={() => setDialog({ account: null })} />
           )
         }
       />

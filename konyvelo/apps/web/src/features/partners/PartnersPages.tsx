@@ -11,6 +11,7 @@ import { ErrorBox, Loading, PageHeader } from "../../ui/Page";
 import { useToast } from "../../ui/Toasts";
 import { PartnerForm } from "./PartnerForm";
 import { PARTNER_TABS, PartnerOpenItems, SubNav } from "../subledger/SubledgerPages";
+import { FoGomb, useNincsFoGomb } from "../../keret/FoGomb";
 
 const partnersKey = (companyId: string | undefined) => ["partners", companyId] as const;
 
@@ -47,9 +48,7 @@ export function PartnersPage() {
         description="Vevők és szállítók; a nyitott tételek a partner adatlapján és a Nyitott tételek fülön láthatók."
         actions={
           ws.can("partners:manage") && (
-            <Link to="/partnerek/uj" className="btn btn-primary">
-              Új partner
-            </Link>
+            <FoGomb cim="Új partner" to="/partnerek/uj" />
           )
         }
       />
@@ -127,6 +126,7 @@ export function PartnersPage() {
 
 export function NewPartnerPage() {
   const ws = useWorkspace();
+  useNincsFoGomb();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();

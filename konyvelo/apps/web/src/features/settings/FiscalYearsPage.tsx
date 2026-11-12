@@ -11,6 +11,7 @@ import { ErrorSummary, Field } from "../../ui/Field";
 import { PageHeader } from "../../ui/Page";
 import { useToast } from "../../ui/Toasts";
 import { HelpTip } from "../../ui/Tooltip";
+import { FoGomb } from "../../keret/FoGomb";
 
 const STATUS_LABELS: Record<FiscalYearDto["status"], string> = {
   OPEN: "Nyitott",
@@ -106,9 +107,7 @@ export function FiscalYearsPage() {
         actions={
           canManage &&
           !showForm && (
-            <button type="button" className="btn btn-primary" onClick={() => setShowForm(true)}>
-              Új üzleti év
-            </button>
+            <FoGomb cim="Új üzleti év" onClick={() => setShowForm(true)} />
           )
         }
       />
