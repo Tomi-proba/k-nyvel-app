@@ -85,4 +85,15 @@ describe("a portál kérése: automatikus összekapcsolás (F27 K)", () => {
     expect((await kuld(j)).statusCode).toBe(200);
     expect((await kuld(j)).statusCode).toBe(401);
   });
+
+  it("telepítési beállítás nélkül (nincs NAV-átjáró): 409 NINCS_ATJARO – a portál „vár” állapotban mutatja", async () => {
+    const nelkul = await createTestApp({ sso: { kiado: KIADO, portalUrl: KIADO, jwksUrl: `${KIADO}/.well-known/jwks.json`, keys: createLocalJWKSet({ keys: [jwk] }) } });
+    try {
+      const r = await nelkul.app.inject({ method: "POST", url: "/api/auth/sso/keres", payload: { keres: await keres("nav-kapcsolas", portalCeg) } });
+      expect(r.statusCode).toBe(409);
+      expect(r.json().code).toBe("NINCS_ATJARO");
+    } finally {
+      await nelkul.close();
+    }
+  });
 });

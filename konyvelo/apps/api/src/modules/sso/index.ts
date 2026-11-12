@@ -375,12 +375,15 @@ export const ssoModule: AppModule = {
       const [ceg] = await db.select({ id: companies.id, createdBy: companies.createdBy }).from(companies).where(eq(companies.portalCompanyId, k.ceg.id)).limit(1);
       if (!ceg) return reply.code(409).send({ code: "NINCS_CEG", message: "A Könyvelő még nincs megnyitva ennél a cégnél." });
       if (k.feladat === "kozpont-kod") {
-        if (!config.hub) throw new AppError(409, "CONFLICT", "Az integrációs központ nincs beállítva ebben a Könyvelőben.");
+        if (!config.hub)
+          return reply.code(409).send({ code: "NINCS_KOZPONT", message: "Az integrációs központot az üzemeltetőnek kell beállítania a Könyvelőben." });
         const c = await createIntegrationLinkCode(db, ceg.id, ceg.createdBy, request.ip);
         return { kod: c.code, lejar: c.expiresAt };
       }
       if (k.feladat === "nav-kapcsolas") {
-        if (!config.eafaGateway) throw new AppError(409, "CONFLICT", "Az eÁFA NAV-átjárója nincs beállítva ebben a Könyvelőben.");
+        // Telepítési beállítás (nem a felhasználó dolga): a portál „vár” állapotban mutatja.
+        if (!config.eafaGateway)
+          return reply.code(409).send({ code: "NINCS_ATJARO", message: "A NAV-hozzáféréshez az üzemeltetőnek be kell állítania az eÁFA NAV-átjáróját a Könyvelőben." });
         if (k.kod && !(await hasNavConnection(db, ceg.id))) await linkNavWithCode(db, config, ceg.id, ceg.createdBy, k.kod, request.ip);
         return { kapcsolva: await hasNavConnection(db, ceg.id) };
       }

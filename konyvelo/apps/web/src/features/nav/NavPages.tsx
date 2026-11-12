@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { keretben } from "../../keret/futas";
 import { useParams, useSearchParams } from "react-router";
 import { Link } from "../../keret/router";
 import { formatHuf, NAV_DIRECTION_LABELS, NAV_OPERATION_LABELS, todayIso, addDays, type NavDirection } from "@konyvelo/domain";
@@ -107,6 +108,14 @@ export function NavConnectionPage() {
           <h2 id="nav-link">
             Összekapcsolás az eÁFA-val <HelpTip term="kapcsolodasiKod" />
           </h2>
+          {keretben() ? (
+            // A közös felületen (F27 K) a portál magától kapcsolja össze: kódot nem kell beírni.
+            <p data-automatikus-osszekapcsolas>
+              Az összekapcsolás magától történik, amint a cég NAV-kapcsolata (technikai felhasználó) be van állítva az eÁFA-ban: kódot nem kell
+              beírni. Az állapotot a közös felület <strong>Beállítások</strong> oldalán látja.
+            </p>
+          ) : (
+            <>
           <ol className="stack">
             <li>
               A cég eÁFA-felületén: <strong>Ügyfél → Könyvelő-hozzáférés → Kapcsolódási kód készítése</strong> (ehhez a cégnek
@@ -135,6 +144,8 @@ export function NavConnectionPage() {
             </form>
           ) : (
             <p className="muted">Az összekapcsolást Adminisztrátor vagy Vezető könyvelő végezheti.</p>
+          )}
+            </>
           )}
         </section>
       )}

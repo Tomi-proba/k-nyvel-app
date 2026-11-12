@@ -2,6 +2,7 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "../../keret/router";
+import { keretben } from "../../keret/futas";
 import { ModulHivatkozas } from "../../keret/ModulHivatkozas";
 import { formatDateHu, formatHuf } from "@konyvelo/domain";
 import {
@@ -113,6 +114,12 @@ export function IntegrationSettingsPage() {
         {s.linked ? (
           <p>
             <span className="badge badge-success">Összekapcsolva</span> {s.linkedAt && `(${formatDateTimeHu(s.linkedAt)})`}
+          </p>
+        ) : keretben() ? (
+          // A közös felületen (F27 K) a portál magától kapcsolja össze a programokat: kódot nem kell készíteni.
+          <p data-automatikus-osszekapcsolas>
+            A programok összekapcsolása magától történik: kódot nem kell készíteni. Az állapotot a közös felület <strong>Beállítások</strong> oldalán látja
+            („A programok összekapcsolása”).
           </p>
         ) : (
           <>
