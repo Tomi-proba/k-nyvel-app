@@ -311,7 +311,8 @@ export function HomePage() {
           </p>
           {ws.can("ledger:post") && (
             <p>
-              <Link to={NEW_ENTRY_PATH} className="btn btn-primary">
+              {/* A keretben az „Új bizonylat” a fő gomb az eszközsoron (F27 B3); itt másodlagos. */}
+              <Link to={NEW_ENTRY_PATH} className={keretben() ? "btn" : "btn btn-primary"}>
                 Új bizonylat
               </Link>
             </p>

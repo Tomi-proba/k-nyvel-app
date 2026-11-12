@@ -15,6 +15,7 @@ import { HelpTip } from "../../ui/Tooltip";
 import { useAccounts } from "../accounts/useAccounts";
 import { templatesKey, useTemplates } from "../documents/queries";
 import { UresAllapot } from "../../ui/UresAllapot";
+import { FoGomb } from "../../keret/FoGomb";
 
 type LineForm = { key: number; accountId: string | null; side: LineSide; base: AmountBase };
 type FormState = { name: string; shortcut: string; docType: string; description: string; vatRate: string; isActive: boolean; lines: LineForm[] };
@@ -191,29 +192,37 @@ function TemplateDialog({ template, onSaved }: { template: TemplateDto | null; o
     }
   };
 
+  const nyit = (o: boolean) => {
+    setOpen(o);
+    if (o) {
+      setForm(fromDto(template));
+      setErrors({});
+      setMessage(null);
+    }
+  };
+
   return (
-    <Dialog.Root
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (o) {
-          setForm(fromDto(template));
-          setErrors({});
-          setMessage(null);
-        }
-      }}
-    >
-      <Dialog.Trigger asChild>
-        {template ? (
+    <Dialog.Root open={open} onOpenChange={nyit}>
+      {template ? (
+        <Dialog.Trigger asChild>
           <button type="button" className="btn btn-small" aria-label={`Szerkesztés: ${template.name}`}>
             Szerkesztés
           </button>
-        ) : (
-          <button type="button" className="btn btn-primary">
-            Új sablon
-          </button>
-        )}
-      </Dialog.Trigger>
+        </Dialog.Trigger>
+      ) : (
+        // Egy fő gomb (F27 B3): a keretben az „Új sablon” az eszközsorra kerül; önállóan a régi helyén marad.
+        <FoGomb
+          cim="Új sablon"
+          onClick={() => nyit(true)}
+          onallo={
+            <Dialog.Trigger asChild>
+              <button type="button" className="btn btn-primary">
+                Új sablon
+              </button>
+            </Dialog.Trigger>
+          }
+        />
+      )}
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
         <Dialog.Content className="dialog dialog-wide" aria-describedby={undefined}>
