@@ -339,6 +339,18 @@ describe("közös belépés a portál jegyével", () => {
     expect((await ujra.get("/api/auth/me")).json().companies).toEqual([expect.objectContaining({ id: c.id, portalCompanyId: ujCeg, role: "ADMIN" })]);
   });
 
+  it("párhuzamos első megnyitás (pl. több böngészőlapon): minden kérés belép, és egyetlen fiók jön létre", async () => {
+    const ceg = randomUUID();
+    const jegyek = await Promise.all(
+      Array.from({ length: 6 }, (_, i) => belepesiJegy({ sub: "p-parhuzamos", sid: `sid-parhuzamos-${i}`, email: "parhuzamos@example.hu", name: "Párhuzamos Petra", cegId: ceg })),
+    );
+    const valaszok = await Promise.all(jegyek.map((jegy) => new Client(sso.app).post("/api/auth/sso", { jegy })));
+    expect(valaszok.map((r) => r.statusCode)).toEqual([200, 200, 200, 200, 200, 200]);
+    for (const r of valaszok) expect(r.json()).toEqual({ kovetkezo: "kesz", companyId: null });
+    const { rows } = await appQuery("SELECT count(*)::int AS n FROM users WHERE email = 'parhuzamos@example.hu'");
+    expect(rows[0].n).toBe(1);
+  });
+
   it("a tétlenségi idő a jegyből jön (legfeljebb 12 óra)", async () => {
     const c = new Client(sso.app);
     await c.post("/api/auth/sso", { jegy: await belepesiJegy({ sub: "p-admin", sid: "sid-hosszu", email: "admin@example.hu", cegId: portalCeg, tetlenseg: 480 }) });

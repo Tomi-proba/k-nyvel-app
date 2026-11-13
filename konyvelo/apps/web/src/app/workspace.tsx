@@ -66,6 +66,9 @@ export function WorkspaceProvider({ me, keretCegId, children }: { me: MeResponse
     queryKey: fiscalYearsKey(company?.id ?? null),
     queryFn: () => get<FiscalYearDto[]>(`/api/companies/${company!.id}/fiscal-years`),
     enabled: Boolean(company),
+    // A keretben az első megnyitáskor az üzleti év magától jön létre (akár egy másik böngészőlapon): amíg nincs,
+    // néhány másodpercig figyeljük, hogy a lap ne ragadjon a „Még nincs üzleti év” állapotban.
+    refetchInterval: (q) => (keret && q.state.data?.length === 0 && q.state.dataUpdateCount < 8 ? 1500 : false),
   });
   const fiscalYears = useMemo(() => fyQuery.data ?? [], [fyQuery.data]);
 

@@ -143,6 +143,22 @@ function CegOsszerendeles({ me, onKesz }: { me: MeResponse; onKesz: () => Promis
   const [folyamatban, setFolyamatban] = useState(false);
   const [automatikusHiba, setAutomatikusHiba] = useState<string | null>(null);
 
+  // Ha a cég közben máshol (pl. egy másik böngészőlapon, vagy a tulajdonosnál) létrejött és össze lett rendelve, ez a
+  // lap magától továbblép: néhány másodpercig figyeljük.
+  useEffect(() => {
+    let probak = 0;
+    const idozito = setInterval(async () => {
+      if (++probak > 10) return clearInterval(idozito);
+      const friss = await sajatMe().catch(() => null);
+      if (friss?.companies.some((c) => c.portalCompanyId === k.ceg.id)) {
+        clearInterval(idozito);
+        void onKesz();
+      }
+    }, 1500);
+    return () => clearInterval(idozito);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [k.ceg.id]);
+
   if (k.ceg.szerep !== "tulajdonos") {
     return (
       <div className="konyvelo-keret konyvelo-keret--keskeny" data-ceg-osszerendeles="nem-tulajdonos">
@@ -253,7 +269,16 @@ function AutomatikusBeallitas({ onHiba, onKesz }: { onHiba: (uzenet: string) => 
       await post(`/api/companies/${ceg.id}/fiscal-years`, javaslat);
       k.ertesit(`A Könyvelő elkészült (${k.ceg.nev})`, "siker");
       await onKesz();
-    })().catch((err) => onHiba(uzenet(err)));
+    })().catch(async (err) => {
+      // Ha közben (pl. egy másik böngészőlapon) a cég már létrejött és össze lett rendelve, nincs hiba: azzal megyünk
+      // tovább. Rövid ideig várunk rá, mert a másik lap több lépésben hozza létre.
+      for (let i = 0; i < 8; i++) {
+        const me = await sajatMe().catch(() => null);
+        if (me?.companies.some((c) => c.portalCompanyId === k.ceg.id)) return onKesz();
+        await new Promise((r) => setTimeout(r, 750));
+      }
+      onHiba(uzenet(err));
+    });
   }, [k, onHiba, onKesz]);
   return <Loading label="A Könyvelő előkészítése a cég adataival…" />;
 }

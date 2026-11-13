@@ -65,6 +65,32 @@ export function szerepkor(portalRole: string, moduleRole: string | null): Role |
 }
 
 /** Ténylegesen él-e még a régi belépés (a kapcsoló és az átállás állapota együtt). */
+/** Kulcsonként egymás után futtatja a műveleteket (egy példányon belül). */
+const sorok = new Map<string, Promise<unknown>>();
+async function sorban<T>(kulcs: string, fn: () => Promise<T>): Promise<T> {
+  const fut = (sorok.get(kulcs) ?? Promise.resolve()).catch(() => undefined).then(fn);
+  sorok.set(kulcs, fut);
+  try {
+    return await fut;
+  } finally {
+    if (sorok.get(kulcs) === fut) sorok.delete(kulcs);
+  }
+}
+
+/** Egyedi kulcs ütközése (PostgreSQL 23505), a Drizzle hibájába csomagolva is. */
+function egyediUtkozes(e: unknown): boolean {
+  for (let h: unknown = e, i = 0; h && i < 5; h = (h as { cause?: unknown }).cause, i++) if ((h as { code?: unknown }).code === "23505") return true;
+  return false;
+}
+async function utkozesUtanUjra<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (!egyediUtkozes(e)) throw e;
+    return fn();
+  }
+}
+
 export async function regiBelepesAktiv(db: Executor, config: Config): Promise<boolean> {
   if (config.regiBelepes || !config.sso) return true;
   const [link] = await db.select({ n: count() }).from(ssoLinks);
@@ -160,7 +186,18 @@ export const ssoModule: AppModule = {
         hiba(e);
       }
       const portal = { sid: j.sid, sub: j.sub, companyId: j.ceg.id, idleMinutes: j.tetlenseg_perc };
+      // Ugyanannak a portál-felhasználónak a párhuzamos belépései (pl. az első megnyitás több böngészőlapon) egymás
+      // után futnak: az első létrehozza a fiókot, a többi már azzal lép be. Több példány esetén az egyedi kulcs
+      // ütközése után egyszer újrapróbáljuk (addigra a másik példány létrehozta a fiókot).
+      return sorban(`sso:${j.sub}`, () => utkozesUtanUjra(() => belepes(j, portal, request, reply)));
+    });
 
+    async function belepes(
+      j: BelepesiJegy,
+      portal: { sid: string; sub: string; companyId: string; idleMinutes: number },
+      request: Parameters<typeof meta>[0] & { ip: string },
+      reply: Parameters<typeof setSessionCookie>[0],
+    ) {
       const [link] = await db.select().from(ssoLinks).where(eq(ssoLinks.portalSub, j.sub)).limit(1);
       if (link) {
         const [u] = await db.select({ isActive: users.isActive, email: users.email }).from(users).where(eq(users.id, link.userId)).limit(1);
@@ -218,7 +255,7 @@ export const ssoModule: AppModule = {
       // A portál-cég tulajdonosa új fiókot is kérhet (nincs régi fiókja ezzel az e-mail-címmel): utána a
       // Könyvelő-céget a portál cégadataival hozza létre, vagy a keretben rendeli össze.
       return { kovetkezo: "osszekapcsolas", kapcsolas, email: j.email, cegOsszerendelve: Boolean(mapped), ujFiokLehet: !regi && j.ceg.szerep === "tulajdonos" };
-    });
+    }
 
     app.post("/api/auth/sso/osszekapcsolas", async (request, reply) => {
       kellSso();
