@@ -714,6 +714,24 @@ describe("beérkező: beszerzés v3, leltár, pénztár, visszáru, sztornó v3 
     expect(await todo("szallitas:B3-4")).toMatchObject({ title: expect.stringMatching(/külön \(fuvarozói\) számlán/) });
   });
 
+  it("beszerzés v4 (F30): a szállító határidejéből jött fizetési határidő a piszkozatra kerül; eladás v3: a határidő a „hiányzó vevőszámla” Teendőben", async () => {
+    await settings({ posting_mode: "DRAFT_ONLY", purchase_date_rule: "RECEIVED" });
+    const v4 = { ...v3("B4-1"), version: 4, payload: { ...v3("B4-1").payload, dueDate: "2026-12-16" } };
+    const r = await deliver(v4);
+    expect((await doc_(r.target!.recordId)).dueDate).toBe("2026-12-16");
+    const nincs = await deliver({ ...v3("B4-2"), version: 4, payload: { ...v3("B4-2").payload, dueDate: null } });
+    expect((await doc_(nincs.target!.recordId)).dueDate).toBeNull();
+
+    const elad = keszletEvent("keszlet.eladas.veglegesitve", 3, "eladas", "E3-1", {
+      saleId: "E3-1", date: "2026-11-16", customer: { name: "Ügyfél Zrt.", taxNumber: customer.taxNumber }, cash: false, invoiceNumber: null,
+      costOfGoods: 0, dueDate: "2026-12-01",
+      lines: [{ productId: "P1", productName: "Bejárati ajtó", quantity: 1, unit: "db", netAmount: 10_000, vatRate: 27, vatAmount: 2_700 }],
+      totals: { net: 10_000, vat: 2_700, gross: 12_700 },
+    });
+    await deliver(elad);
+    expect(await todo("szamla:E3-1")).toMatchObject({ kind: "INVOICE_MISSING", detail: expect.stringMatching(/Fizetési határidő a vevő határideje szerint: 2026\. ?12\. ?01/) });
+  });
+
   it("leltáreltérés: hiány T 869 / K 261, többlet T 261 / K 969; „Leltár” fajtaként csoportosan jóváhagyható, magától soha nem könyvel", async () => {
     await settings({ posting_mode: "AUTO" });
     const leltar = (id: string, kind: string, value: number) =>

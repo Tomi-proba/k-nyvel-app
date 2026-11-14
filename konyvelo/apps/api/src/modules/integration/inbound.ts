@@ -188,6 +188,8 @@ type Purchase = {
   fulfillmentDate: string | null;
   invoiceNumber: string | null;
   supplier: { name: string; taxNumber?: string } | null;
+  /** A fizetési határidő, ha a Készletben megvan (F30: a szállító határidejéből). */
+  dueDate?: string | null;
   lines: StockLine[];
   totals: { net: number; vat: number; gross: number };
 };
@@ -249,6 +251,7 @@ async function purchase(ctx: Ctx, p: Purchase, opts: { amounts?: PurchaseAmounts
     description: describe("Készlet-beszerzés", p.lines),
     issueDate: p.invoiceDate,
     fulfillmentDate: p.fulfillmentDate,
+    dueDate: p.dueDate ?? null,
     accountingDate,
     lines: [
       { accountId: ids.inventoryAccountId ?? null, side: "D", amount: inventoryAmount },
@@ -288,6 +291,8 @@ type Sale = {
   cash: boolean;
   invoiceNumber: string | null;
   costOfGoods: number;
+  /** A fizetési határidő, ha a vevőnek van (F30); a vevőszámlán ezt kell feltüntetni. */
+  dueDate?: string | null;
   lines: StockLine[];
   totals: { net: number; vat: number; gross: number };
 };
@@ -349,7 +354,13 @@ async function sale(ctx: Ctx, p: Sale): Promise<InboundResult> {
     const title = p.cash
       ? `Készpénzes eladás a Készletben (${formatDateHu(p.date)}, ${formatHuf(p.totals.gross)}): az árbevételt a pénztárban rögzítse.`
       : `A Készlet-eladáshoz (${formatDateHu(p.date)}, ${formatHuf(p.totals.gross)}${p.invoiceNumber ? `, számla: ${p.invoiceNumber}` : ""}) ${matching.length > 1 ? "több vevőszámla is illik; válassza ki, melyik az" : "nincs meg a vevőszámla a Könyvelőben"}.`;
-    await openTodo(tx, companyId, { key, kind: "INVOICE_MISSING", title, detail: "Árbevételt számla nélkül nem könyvelünk; ha a számla elkészült, rögzítse (vagy importálja a NAV-ból)." });
+    const detail = [
+      "Árbevételt számla nélkül nem könyvelünk; ha a számla elkészült, rögzítse (vagy importálja a NAV-ból).",
+      p.dueDate ? `Fizetési határidő a vevő határideje szerint: ${formatDateHu(p.dueDate)}.` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    await openTodo(tx, companyId, { key, kind: "INVOICE_MISSING", title, detail });
     if (result.outcome === "APPLIED") result = { outcome: "TODO", todo: { key, title } };
   }
   return result;
@@ -923,11 +934,16 @@ async function applyInboundEvent(tx: Tx, companyId: string, event: EventEnvelope
       return purchase(ctx, payload);
     case "keszlet.eladas.veglegesitve@2":
       return sale(ctx, payload);
+    case "keszlet.eladas.veglegesitve@3":
+      return sale(ctx, payload);
     case "keszlet.mozgas.sztornozva@2":
       return withdrawal(ctx, payload);
     case "keszlet.mozgas.jovahagyva@1":
       return stockApproved(ctx, payload);
     case "keszlet.beszerzes.veglegesitve@3":
+      return purchaseV3(ctx, payload);
+    // F30: ugyanaz, a fizetési határidővel.
+    case "keszlet.beszerzes.veglegesitve@4":
       return purchaseV3(ctx, payload);
     case "keszlet.leltar.elteres@1":
       return inventoryDiff(ctx, payload);
