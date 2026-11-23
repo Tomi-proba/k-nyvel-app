@@ -44,12 +44,21 @@ jobs:
       # A README szerint npm 11 kell (az npm 10-ben ismert hiba miatt).
       - run: npx -y npm@11 ci --no-audit --no-fund
       - run: cp .env.example .env && npm run db:setup
-      # A mentés visszaállításának tesztje a PostgreSQL ügyféleszközeit használja (pg_dump, pg_restore, 16-os főverzió).
+      # A mentés visszaállításának tesztje a PostgreSQL ügyféleszközeit használja (pg_dump, pg_restore), pontosan a
+      # szerverrel egyező 16-os főverzióval: az újabb pg_dump olyan beállítást ír a mentésbe (transaction_timeout), amit a
+      # 16-os szerver nem ismer, így a visszaállítás elbukna (a futtatógép ügyféleszközei 2026 novemberében frissültek).
       - run: |
-          if ! pg_dump --version | grep -q "PostgreSQL) 1[6-9]"; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-16 || sudo apt-get install -y -qq postgresql-client
+          if ! pg_dump --version | grep -q "PostgreSQL) 16\."; then
+            sudo apt-get update -qq
+            if ! sudo apt-get install -y -qq postgresql-client-16; then
+              sudo install -d /usr/share/postgresql-common/pgdg
+              sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+              echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+              sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-16
+            fi
+            echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
           fi
-          pg_dump --version
+      - run: pg_dump --version && pg_dump --version | grep -q "PostgreSQL) 16\."
       - run: npm run typecheck
       - run: npm test
       - run: npx playwright install --with-deps chromium
