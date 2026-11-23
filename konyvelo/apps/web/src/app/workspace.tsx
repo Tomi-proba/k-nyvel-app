@@ -6,6 +6,7 @@ import { compareDates, todayIso } from "@konyvelo/domain";
 import { hasPermission, type FiscalYearDto, type MeResponse, type Permission } from "@konyvelo/shared";
 import { get } from "../lib/api";
 import { readSetting, writeSetting } from "../lib/storage";
+import { useEloFrissites } from "../lib/useEloFrissites";
 
 type CompanyRef = MeResponse["companies"][number];
 
@@ -61,6 +62,9 @@ export function WorkspaceProvider({ me, keretCegId, children }: { me: MeResponse
   useEffect(() => {
     if (!keret && company && company.id !== companyId) setCompanyId(company.id);
   }, [keret, company, companyId]);
+
+  // F29: a cég változásai élőben (másik felhasználó, integráció), oldalújratöltés nélkül.
+  useEloFrissites(company?.id ?? null);
 
   const fyQuery = useQuery({
     queryKey: fiscalYearsKey(company?.id ?? null),

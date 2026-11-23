@@ -2,6 +2,7 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { computeAuditHash, verifyAuditChain, type ChainVerification } from "@konyvelo/domain/audit-chain";
 import type { Executor, Tx } from "./db";
 import { auditLog } from "./schema";
+import { valtozasJelzes } from "./elo";
 
 export type AuditEvent = {
   companyId: string | null;
@@ -59,6 +60,8 @@ export async function writeAudit(tx: Tx, e: AuditEvent): Promise<void> {
     prevHash: record.prevHash,
     hash,
   });
+  // F29: a cég nyitott felületei frissülnek (a jelzés a tranzakció véglegesítésekor megy ki, adat nélkül).
+  if (record.companyId) await valtozasJelzes(tx, record.companyId, record.entityType);
 }
 
 /** Csak a ténylegesen megváltozott mezők (az audit naplóba így kevesebb zaj kerül). */

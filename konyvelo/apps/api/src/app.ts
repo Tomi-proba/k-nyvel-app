@@ -3,7 +3,7 @@ import path from "node:path";
 import cookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
-import { CSRF_HEADER } from "@konyvelo/shared";
+import { AUTOMATIKUS_FEJLEC, CSRF_HEADER } from "@konyvelo/shared";
 import type { Config } from "./config";
 import { loadSession, SESSION_COOKIE } from "./core/auth";
 import type { Db } from "./core/db";
@@ -12,6 +12,7 @@ import type { AppModule } from "./core/modules";
 import { createFileStore, type FileStore } from "./core/filestore";
 import { accountsModule } from "./modules/accounts";
 import { auditModule } from "./modules/audit";
+import { eloModule } from "./modules/elo";
 import { authModule } from "./modules/auth";
 import { ssoModule } from "./modules/sso";
 import { companiesModule } from "./modules/companies";
@@ -45,6 +46,7 @@ export const MODULES: AppModule[] = [
   integrationModule,
   exportModule,
   auditModule,
+  eloModule,
 ];
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -98,7 +100,9 @@ export async function buildApp(config: Config, db: Db, files: FileStore = create
       }
     }
 
-    const session = await loadSession(db, config, request.cookies[SESSION_COOKIE]);
+    // F29: az élő kapcsolat és az automatikus újratöltés nem hosszabbítja a munkamenetet.
+    const automatikus = request.headers[AUTOMATIKUS_FEJLEC] === "1" || /^\/api\/companies\/[^/?]+\/elo(\?|$)/.test(request.url);
+    const session = await loadSession(db, config, request.cookies[SESSION_COOKIE], { csusztat: !automatikus });
     if (session) {
       request.sessionId = session.session.id;
       request.session = session.session;

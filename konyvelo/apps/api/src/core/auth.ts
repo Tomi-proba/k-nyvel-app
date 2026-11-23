@@ -134,6 +134,9 @@ export async function loadSession(
   db: Db,
   config: Config,
   token: string | undefined,
+  /** csusztat: false – az élő kapcsolat és az automatikus újratöltés nem számít tevékenységnek (a tétlenségi
+   *  kiléptetés így akkor is működik, ha közben mások dolgoznak; F29). */
+  opts: { csusztat?: boolean } = {},
 ): Promise<{ user: AuthUser; session: SessionInfo } | null> {
   if (!token) return null;
   const now = new Date();
@@ -163,7 +166,7 @@ export async function loadSession(
   const aal = row.aal === 2 ? 2 : 1;
 
   // Csúszó lejárat (a teljes belépésnél); legfeljebb percenként frissítjük, hogy ne írjunk minden kérésnél.
-  if (aal === 2 && now.getTime() - row.lastSeenAt.getTime() > 60_000) {
+  if (opts.csusztat !== false && aal === 2 && now.getTime() - row.lastSeenAt.getTime() > 60_000) {
     let expiresAt = new Date(now.getTime() + idleMinutesOf(config, 2, row.idleMinutes) * 60_000);
     if (row.maxExpiresAt && expiresAt > row.maxExpiresAt) expiresAt = row.maxExpiresAt;
     await db.update(sessions).set({ lastSeenAt: now, expiresAt }).where(eq(sessions.id, row.sessionId));

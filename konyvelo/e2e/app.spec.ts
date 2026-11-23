@@ -203,7 +203,9 @@ test("felhasználók: hozzáadás, megerősítés eltávolítás előtt", async 
   await page.getByLabel("Név").fill("Könyvelő Kata");
   await page.getByRole("textbox", { name: "Kezdő jelszó" }).fill("kezdo-jelszo-12345");
   await page.getByRole("button", { name: "Hozzáadás" }).click();
-  await expect(page.getByRole("cell", { name: "Könyvelő Kata", exact: true })).toBeVisible();
+  // A cég felhasználóinak táblázatában (az élő frissítés miatt az átállási táblázatban is megjelenhet).
+  const tagok = page.getByRole("table", { name: "A cég felhasználói" });
+  await expect(tagok.getByRole("cell", { name: "Könyvelő Kata", exact: true })).toBeVisible();
   await expectAccessible(page, "Felhasználók");
 
   await page.getByRole("button", { name: "Eltávolítás: Könyvelő Kata" }).click();
@@ -213,7 +215,7 @@ test("felhasználók: hozzáadás, megerősítés eltávolítás előtt", async 
   // A fókusz a „Mégse” gombon van, az Enter nem töröl.
   await expect(confirm.getByRole("button", { name: "Mégse" })).toBeFocused();
   await confirm.getByRole("button", { name: "Eltávolítás" }).click();
-  await expect(page.getByRole("cell", { name: "Könyvelő Kata", exact: true })).toBeHidden();
+  await expect(tagok.getByRole("cell", { name: "Könyvelő Kata", exact: true })).toBeHidden();
 });
 
 test("audit napló: bejegyzések és sértetlenség-ellenőrzés", async ({ page }) => {
@@ -451,10 +453,11 @@ test("bizonylat: piszkozat billentyűzetes sorrögzítéssel, Teendők, banki ki
   // Kezdőlap: a teendők kattinthatók.
   await page.getByRole("navigation", { name: "Főmenü" }).getByRole("link", { name: "Kezdőlap" }).click();
   const todos = page.getByRole("region", { name: /Teendők/ });
-  await expect(todos.getByRole("link", { name: /Rögzítési határidő: 1 lejárt/ })).toBeVisible();
+  // A lejárt tételek száma a mai dátumtól függ (a 2026.10.10-i banki tétel határideje 2026.11.15.), ezért nem rögzítjük.
+  await expect(todos.getByRole("link", { name: /Rögzítési határidő: [12] lejárt/ })).toBeVisible();
   await expect(todos.getByRole("link", { name: /Piszkozat: Postaköltség.*Rögzítési határidő lejárt: 2026\.01\.12\./ })).toBeVisible();
   await expectAccessible(page, "Kezdőlap teendőkkel");
-  await todos.getByRole("link", { name: /Rögzítési határidő: 1 lejárt/ }).click();
+  await todos.getByRole("link", { name: /Rögzítési határidő: [12] lejárt/ }).click();
   await expect(page).toHaveURL(/\/konyveles\?allapot=piszkozat$/);
   await expect(page.getByRole("link", { name: "Piszkozat" })).toHaveCount(2);
   await page.goBack();

@@ -10,6 +10,8 @@ export type ApiError = {
 
 /** Egyedi fejléc minden módosító kéréshez (CSRF-védelem). */
 export const CSRF_HEADER = "x-konyvelo-csrf";
+/** F29: az automatikus (élő jelzésre indított) újratöltés jelzése: nem számít tevékenységnek, nem hosszabbítja a munkamenetet. */
+export const AUTOMATIKUS_FEJLEC = "x-konyvelo-automatikus";
 
 export type MeResponse = {
   user: { id: string; email: string; name: string; mustChangePassword: boolean };

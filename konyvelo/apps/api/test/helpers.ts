@@ -144,6 +144,11 @@ export class Client {
     return res;
   }
 
+  /** A munkamenet-süti (valódi HTTP-kapcsolathoz, pl. az élő jelzés teszteléséhez). */
+  get suti(): string | null {
+    return this.cookie;
+  }
+
   get = (url: string) => this.request("GET", url);
   post = (url: string, body?: unknown, headers?: Record<string, string>) => this.request("POST", url, body ?? {}, headers);
   patch = (url: string, body?: unknown) => this.request("PATCH", url, body ?? {});

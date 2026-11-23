@@ -1,5 +1,5 @@
 import { apiCim } from "../keret/futas";
-import { CSRF_HEADER, type ApiError as ApiErrorBody } from "@konyvelo/shared";
+import { AUTOMATIKUS_FEJLEC, CSRF_HEADER, type ApiError as ApiErrorBody } from "@konyvelo/shared";
 
 /** A szervertől kapott hiba, mezőnkénti üzenetekkel. */
 export class ApiError extends Error {
@@ -23,7 +23,22 @@ export async function api<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
   );
 }
 
+/** F29: az élő jelzésre indított újratöltés alatt a GET-kérések jelzik, hogy automatikusak (nem hosszabbítják a
+ *  munkamenetet, így a tétlenségi kiléptetés akkor is működik, ha közben mások dolgoznak). */
+let automatikus = 0;
+export async function automatikusan<T>(fn: () => Promise<T>): Promise<T> {
+  automatikus++;
+  try {
+    return await fn();
+  } finally {
+    automatikus--;
+  }
+}
+
 async function send(path: string, init: RequestInit): Promise<Response> {
+  if (automatikus > 0 && (init.method ?? "GET") === "GET") {
+    init = { ...init, headers: { ...(init.headers as Record<string, string> | undefined), [AUTOMATIKUS_FEJLEC]: "1" } };
+  }
   try {
     return await fetch(apiCim(path), { credentials: "same-origin", ...init });
   } catch {
