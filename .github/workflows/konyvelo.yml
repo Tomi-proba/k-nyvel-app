@@ -19,7 +19,9 @@ defaults:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Rögzített futtatógép: az ubuntu-latest 2026 novemberében 26.04-re váltott, amit a rögzített Playwright (1.56.1)
+    # nem támogat, és az ügyféleszközei (pg_dump) is újabbak a teszt-adatbázisnál.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16
